@@ -10,6 +10,7 @@ from split_peel.package import (
     _trim_timeline_to_duration,
     _replace_character_subtitles,
     inspect_package,
+    repair_banny_wardrobe,
     retime_mouth_events,
     roundtrip_package,
     unpack_package,
@@ -166,6 +167,44 @@ def test_retime_mouth_events_replaces_stale_keym_events(tmp_path: Path, monkeypa
     peel_events = stage["characters"][1]["events"]
     assert all(event["t"] < 2.0 for event in peel_events)
     assert len([event for event in peel_events if event["code"] == "KeyM"]) >= 4
+
+
+def test_repair_banny_wardrobe_removes_invalid_base_outfits(tmp_path: Path):
+    package = tmp_path / "show.bs"
+    show = {
+        "assets": [],
+        "stage": {
+            "audioTracks": [],
+            "backgroundTracks": [],
+            "characters": [
+                {"baseOutfit": {"6": "proff-glasses", "5": "glassy"}},
+                {"baseOutfit": {"11": "zipper-jacket"}},
+            ],
+        },
+    }
+    catalog = {
+        "slots": [
+            {"slot": 6, "outfits": [{"name": "proff-glasses"}]},
+            {"slot": 11, "outfits": [{"name": "zipper-jacket"}]},
+        ]
+    }
+    with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("show.json", json.dumps(show))
+
+    repairs = repair_banny_wardrobe(package, catalog)
+
+    assert repairs == [
+        {
+            "character": "0",
+            "slot": "5",
+            "outfit": "glassy",
+            "action": "removed-invalid-baseOutfit",
+        }
+    ]
+    with zipfile.ZipFile(package) as archive:
+        repaired = json.loads(archive.read("show.json"))
+    assert repaired["stage"]["characters"][0]["baseOutfit"] == {"6": "proff-glasses"}
+    assert repaired["stage"]["characters"][1]["baseOutfit"] == {"11": "zipper-jacket"}
 
 
 def _write_test_wav(path: Path, segments: List[Tuple[float, float, int]], sample_rate: int = 22050) -> None:

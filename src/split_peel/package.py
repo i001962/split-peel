@@ -84,6 +84,20 @@ def retime_mouth_events(template: Path, out: Path, overwrite: bool = False) -> N
         _zip_directory(tmp_path, out)
 
 
+def repair_banny_wardrobe(package: Path, catalog: dict[str, Any]) -> list[dict[str, str]]:
+    if package.is_dir():
+        return _repair_banny_wardrobe_in_dir(package, catalog)
+
+    with tempfile.TemporaryDirectory(prefix="split-peel-") as tmp:
+        tmp_path = Path(tmp)
+        with zipfile.ZipFile(package) as archive:
+            archive.extractall(tmp_path)
+        repairs = _repair_banny_wardrobe_in_dir(tmp_path, catalog)
+        if repairs:
+            _zip_directory(tmp_path, package)
+        return repairs
+
+
 def build_show(
     template: Path,
     script: Optional[Path],
@@ -364,6 +378,53 @@ def _retime_mouth_events_in_dir(package_dir: Path) -> None:
         character["events"] = sorted(events, key=lambda event: (float(event["t"]), str(event["code"]), not bool(event["down"])))
 
     show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _repair_banny_wardrobe_in_dir(package_dir: Path, catalog: dict[str, Any]) -> list[dict[str, str]]:
+    valid_by_slot = _catalog_outfits_by_slot(catalog)
+    if not valid_by_slot:
+        return []
+
+    show_path = package_dir / "show.json"
+    show = json.loads(show_path.read_text(encoding="utf-8"))
+    characters = ((show.get("stage") or {}).get("characters") or [])
+    repairs: list[dict[str, str]] = []
+
+    for character_index, character in enumerate(characters):
+        base_outfit = character.get("baseOutfit")
+        if not isinstance(base_outfit, dict):
+            continue
+        for slot, outfit in list(base_outfit.items()):
+            slot_key = str(slot)
+            outfit_name = str(outfit)
+            if outfit_name in valid_by_slot.get(slot_key, set()):
+                continue
+            del base_outfit[slot]
+            repairs.append(
+                {
+                    "character": str(character_index),
+                    "slot": slot_key,
+                    "outfit": outfit_name,
+                    "action": "removed-invalid-baseOutfit",
+                }
+            )
+
+    if repairs:
+        show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return repairs
+
+
+def _catalog_outfits_by_slot(catalog: dict[str, Any]) -> dict[str, set[str]]:
+    valid_by_slot: dict[str, set[str]] = {}
+    for slot_entry in catalog.get("slots") or []:
+        slot = str(slot_entry.get("slot"))
+        names = {
+            str(outfit.get("name"))
+            for outfit in slot_entry.get("outfits") or []
+            if isinstance(outfit, dict) and outfit.get("name")
+        }
+        valid_by_slot[slot] = names
+    return valid_by_slot
 
 
 def _speaker_from_clip(clip: dict[str, Any]) -> str:

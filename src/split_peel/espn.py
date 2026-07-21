@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Optional
@@ -76,8 +77,12 @@ def download_match_logos(match_context: dict[str, Any], asset_dir: Path) -> list
         filename = f"{_slug(team.get('abbreviation') or team.get('name') or 'team')}-logo{suffix}"
         path = asset_dir / filename
         request = urllib.request.Request(logo_url, headers={"User-Agent": "split-peel/0.1"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            path.write_bytes(response.read())
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                path.write_bytes(response.read())
+        except (TimeoutError, OSError, urllib.error.URLError) as error:
+            team["logoDownloadError"] = str(error)
+            continue
         team["localLogo"] = str(path)
         downloaded.append({"team": team.get("name"), "path": str(path)})
     return downloaded

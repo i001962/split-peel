@@ -1,0 +1,31 @@
+{
+  "episode_slug": "opening-day",
+  "template_path": "outputs/openai-voiced.bs",
+  "run_dir": "runs/opening-day",
+  "output_bs": "outputs/opening-day.bs",
+  "output_bannyshow": "outputs/opening-day.bannyshow",
+  "output_movie": "outputs/opening-day.mp4",
+  "duration_sec": 60,
+  "background_gain": 0.22,
+  "no_feed": true,
+  "espn_league": "eng.1",
+  "no_espn": false,
+  "overlays_path": null,
+  "characters_path": "characters/default.json",
+  "instructions": "Create an ESPN Premier League opening day episode only. Do not reference Farcaster, social posts, casts, usernames, or timeline reactions. Make it feel like the first show of a new season: big optimism, absurd overreactions, table-watch jokes before anyone deserves them, and specific match context from the selected ENG.1 fixture.",
+  "instructions_file": null,
+  "script_provider": "template",
+  "memory_dir": "memory",
+  "no_memory": false,
+  "overwrite_script": true,
+  "banny_enabled": true,
+  "banny_bin": null,
+  "banny_checkout_path": null,
+  "banny_render_size": "720",
+  "banny_preview_times": [
+    2,
+    8,
+    14
+  ],
+  "banny_ship": true
+}

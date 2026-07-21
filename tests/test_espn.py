@@ -1,6 +1,8 @@
+import urllib.error
+
 import pytest
 
-from split_peel.espn import build_scoreboard_overlays, normalize_scoreboard, scoreboard_url_for_league
+from split_peel.espn import build_scoreboard_overlays, download_match_logos, normalize_scoreboard, scoreboard_url_for_league
 
 
 def test_scoreboard_url_for_league_builds_soccer_url():
@@ -111,6 +113,30 @@ def test_build_scoreboard_overlays_uses_local_logos():
     assert manifest["overlays"][0]["x"] == 0.18
     assert manifest["overlays"][1]["x"] == 0.82
     assert len(manifest["overlays"]) == 2
+
+
+def test_download_match_logos_continues_when_logo_download_fails(tmp_path, monkeypatch):
+    def fail_urlopen(request, timeout):
+        raise urllib.error.URLError("timeout")
+
+    monkeypatch.setattr("split_peel.espn.urllib.request.urlopen", fail_urlopen)
+    context = {
+        "match": {
+            "teams": [
+                {
+                    "abbreviation": "ARS",
+                    "name": "Arsenal",
+                    "logo": "https://example.com/ars.png",
+                }
+            ]
+        }
+    }
+
+    downloaded = download_match_logos(context, tmp_path)
+
+    assert downloaded == []
+    assert "timeout" in context["match"]["teams"][0]["logoDownloadError"]
+    assert not (tmp_path / "ars-logo.png").exists()
 
 
 def _scoreboard_event(event_id, name, short_name, date):

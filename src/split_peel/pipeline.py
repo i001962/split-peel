@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from split_peel.banny_cli import BannyCliError, resolve_banny_cli
 from split_peel.characters import DEFAULT_CHARACTERS_PATH, load_characters
 from split_peel.espn import (
     DEFAULT_ESPN_LEAGUE,
@@ -18,7 +19,7 @@ from split_peel.espn import (
 from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
 from split_peel.overlays import build_pfp_overlays, load_overlay_manifest
-from split_peel.package import build_show, inspect_package, unpack_package
+from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
 from split_peel.scriptwriter import draft_script
 
 
@@ -37,6 +38,7 @@ class PipelineConfig:
     duration_sec: int = 60
     background_gain: Optional[float] = None
     feed_url: str = DEFAULT_FOOTBALL_FEED_URL
+    no_feed: bool = False
     espn_league: str = DEFAULT_ESPN_LEAGUE
     scoreboard_url: Optional[str] = None
     match_id: Optional[str] = None
@@ -49,6 +51,12 @@ class PipelineConfig:
     memory_dir: Path = DEFAULT_MEMORY_DIR
     no_memory: bool = False
     overwrite_script: bool = False
+    banny_enabled: bool = False
+    banny_bin: Optional[Path] = None
+    banny_checkout_path: Optional[Path] = None
+    banny_render_size: str = "720"
+    banny_preview_times: tuple[float, ...] = ()
+    banny_ship: bool = False
 
 
 def load_pipeline_config(path: Path) -> PipelineConfig:
@@ -71,6 +79,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         duration_sec=int(payload.get("duration_sec") or 60),
         background_gain=_optional_float(payload.get("background_gain")),
         feed_url=str(payload.get("feed_url") or DEFAULT_FOOTBALL_FEED_URL),
+        no_feed=bool(payload.get("no_feed", False)),
         espn_league=str(payload.get("espn_league") or DEFAULT_ESPN_LEAGUE),
         scoreboard_url=payload.get("scoreboard_url"),
         match_id=payload.get("match_id"),
@@ -83,6 +92,12 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         memory_dir=_path(payload.get("memory_dir") or DEFAULT_MEMORY_DIR, base_dir),
         no_memory=bool(payload.get("no_memory", False)),
         overwrite_script=bool(payload.get("overwrite_script", False)),
+        banny_enabled=bool(payload.get("banny_enabled", False)),
+        banny_bin=_optional_path(payload.get("banny_bin"), base_dir),
+        banny_checkout_path=_optional_path(payload.get("banny_checkout_path"), base_dir),
+        banny_render_size=_render_size(payload.get("banny_render_size") or "720"),
+        banny_preview_times=_preview_times(payload.get("banny_preview_times")),
+        banny_ship=bool(payload.get("banny_ship", False)),
     )
 
 
@@ -97,6 +112,7 @@ def write_pipeline_config_template(path: Path) -> None:
         "duration_sec": 60,
         "background_gain": 0.22,
         "feed_url": DEFAULT_FOOTBALL_FEED_URL,
+        "no_feed": False,
         "espn_league": DEFAULT_ESPN_LEAGUE,
         "match_id": None,
         "no_espn": False,
@@ -108,6 +124,12 @@ def write_pipeline_config_template(path: Path) -> None:
         "memory_dir": str(DEFAULT_MEMORY_DIR),
         "no_memory": False,
         "overwrite_script": False,
+        "banny_enabled": True,
+        "banny_bin": None,
+        "banny_checkout_path": None,
+        "banny_render_size": "720",
+        "banny_preview_times": [2, 8, 14],
+        "banny_ship": True,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -134,6 +156,17 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         )
     if config.overlays_path:
         artifacts["input_overlays"] = str(config.overlays_path)
+    if config.banny_enabled:
+        artifacts["banny_catalog"] = str(config.run_dir / "banny-catalog.json")
+        artifacts["banny_wardrobe_repairs"] = str(config.run_dir / "banny-wardrobe-repairs.json")
+        artifacts["banny_validate"] = str(config.run_dir / "banny-validate.json")
+        artifacts["banny_info"] = str(config.run_dir / "banny-info.json")
+        if config.banny_preview_times:
+            artifacts["banny_previews"] = [
+                str(_preview_path(config, timestamp)) for timestamp in config.banny_preview_times
+            ]
+        if config.banny_ship:
+            artifacts["output_movie"] = str(config.output_movie)
 
     return {
         "episode_slug": config.episode_slug,
@@ -141,15 +174,17 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         "duration_sec": config.duration_sec,
         "background_gain": config.background_gain,
         "feed_url": config.feed_url,
+        "no_feed": config.no_feed,
         "espn_league": None if config.no_espn else config.espn_league,
         "overwrite_script": config.overwrite_script,
         "stages": [
             "inspect-template",
-            "fetch-feed",
+            "write-empty-feed" if config.no_feed else "fetch-feed",
             *([] if config.no_espn else ["fetch-scoreboard", "normalize-match-context", "build-espn-overlays"]),
             "draft-script",
             "build-show",
             "unpack",
+            *(_banny_stages(config)),
             "write-movie-export-handoff",
             "write-studio-qa-checklist",
             "write-pipeline-manifest",
@@ -174,7 +209,7 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     overlays_path = config.overlays_path
     match_context = None
 
-    feed = fetch_feed(config.feed_url)
+    feed = {"casts": []} if config.no_feed else fetch_feed(config.feed_url)
     write_json(feed_path, feed)
 
     if not config.no_espn:
@@ -219,12 +254,13 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         overlays=overlays_path,
         characters=characters,
     )
+    banny_result = run_banny_post_build(config) if config.banny_enabled else None
     unpack_package(config.output_bs, config.output_bannyshow, overwrite=True)
 
     qa_path = config.run_dir / "studio-qa-checklist.md"
     handoff_path = config.run_dir / "movie-export-handoff.md"
-    write_studio_qa_checklist(config, qa_path)
-    write_movie_export_handoff(config, handoff_path)
+    write_studio_qa_checklist(config, qa_path, banny_result=banny_result)
+    write_movie_export_handoff(config, handoff_path, banny_result=banny_result)
 
     manifest = {
         **plan,
@@ -232,14 +268,62 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         "memory_path": str(memory_path) if memory_path else None,
         "final_overlays": str(overlays_path) if overlays_path else None,
         "movie_export_path": str(config.output_movie),
-        "delivery_status": "awaiting-studio-export",
+        "banny": banny_result,
+        "delivery_status": "movie-exported" if banny_result and banny_result.get("movie") else "awaiting-studio-export",
         "status": "ready-for-studio-qa",
     }
     write_json(config.run_dir / "pipeline-manifest.json", manifest)
     return manifest
 
 
-def write_studio_qa_checklist(config: PipelineConfig, path: Path) -> None:
+def run_banny_post_build(config: PipelineConfig) -> dict[str, Any]:
+    try:
+        cli = resolve_banny_cli(config.banny_bin, config.banny_checkout_path)
+    except BannyCliError as error:
+        raise PipelineError(str(error)) from error
+
+    validate_path = config.run_dir / "banny-validate.json"
+    info_path = config.run_dir / "banny-info.json"
+    catalog_path = config.run_dir / "banny-catalog.json"
+    repairs_path = config.run_dir / "banny-wardrobe-repairs.json"
+    try:
+        catalog = cli.catalog()
+        catalog_path.write_text(catalog.stdout, encoding="utf-8")
+        repairs = repair_banny_wardrobe(config.output_bs, json.loads(catalog.stdout))
+        write_json(repairs_path, repairs)
+        validate = cli.validate(config.output_bs)
+        info = cli.info(config.output_bs)
+        validate_path.write_text(validate.stdout, encoding="utf-8")
+        info_path.write_text(info.stdout, encoding="utf-8")
+
+        previews = []
+        for timestamp in config.banny_preview_times:
+            preview_path = _preview_path(config, timestamp)
+            cli.preview(config.output_bs, preview_path, timestamp)
+            previews.append({"time": timestamp, "path": str(preview_path)})
+
+        movie = None
+        if config.banny_ship:
+            cli.ship(config.output_bs, config.output_movie, config.banny_render_size)
+            movie = str(config.output_movie)
+    except BannyCliError as error:
+        raise PipelineError(str(error)) from error
+
+    return {
+        "command_prefix": cli.command_prefix,
+        "cwd": str(cli.cwd) if cli.cwd else None,
+        "catalog": str(catalog_path),
+        "wardrobe_repairs": str(repairs_path),
+        "wardrobe_repair_count": len(repairs),
+        "validate": str(validate_path),
+        "info": str(info_path),
+        "previews": previews,
+        "render_size": config.banny_render_size,
+        "movie": movie,
+    }
+
+
+def write_studio_qa_checklist(config: PipelineConfig, path: Path, banny_result: Optional[dict[str, Any]] = None) -> None:
     lines = [
         f"# Studio QA Checklist: {config.episode_slug}",
         "",
@@ -247,6 +331,10 @@ def write_studio_qa_checklist(config: PipelineConfig, path: Path) -> None:
         f"- Unpacked package: `{config.output_bannyshow}`",
         f"- Target movie export: `{config.output_movie}`",
         f"- Run directory: `{config.run_dir}`",
+        "",
+        "## Banny CLI",
+        "",
+        *(_banny_checklist_lines(config, banny_result)),
         "",
         "## Import",
         "",
@@ -281,12 +369,12 @@ def write_studio_qa_checklist(config: PipelineConfig, path: Path) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_movie_export_handoff(config: PipelineConfig, path: Path) -> None:
+def write_movie_export_handoff(config: PipelineConfig, path: Path, banny_result: Optional[dict[str, Any]] = None) -> None:
     lines = [
         f"# Movie Export Handoff: {config.episode_slug}",
         "",
         "This handoff is the bridge between the generated package pipeline and the final movie file.",
-        "The repo prepares the package; Banny Studio performs the visual preview and movie export.",
+        _handoff_summary(config, banny_result),
         "",
         "## Inputs",
         "",
@@ -301,12 +389,7 @@ def write_movie_export_handoff(config: PipelineConfig, path: Path) -> None:
         "",
         "## Export Steps",
         "",
-        "1. Open the generated `.bs` package in Banny Studio.",
-        "2. Preview the full timeline from the beginning.",
-        "3. Confirm dialogue, motion, overlays, and background audio are acceptable.",
-        "4. Export the full range to the target movie path.",
-        "5. Reopen or play the final movie file and check for missing media.",
-        "6. Record any needed rebuild in the Studio QA checklist.",
+        *_handoff_steps(config, banny_result),
         "",
         "## Completion Criteria",
         "",
@@ -352,6 +435,21 @@ def _optional_float(value: Any) -> Optional[float]:
     return float(value)
 
 
+def _render_size(value: Any) -> str:
+    size = str(value)
+    if size not in {"480", "720", "1080", "4k"}:
+        raise PipelineError("banny_render_size must be one of: 480, 720, 1080, 4k")
+    return size
+
+
+def _preview_times(value: Any) -> tuple[float, ...]:
+    if value in (None, ""):
+        return ()
+    if not isinstance(value, list):
+        raise PipelineError("banny_preview_times must be a list of seconds")
+    return tuple(float(item) for item in value)
+
+
 def _instructions(inline: Optional[str], path: Optional[Path]) -> Optional[str]:
     pieces = []
     if inline:
@@ -366,3 +464,87 @@ def _merge_overlay_dicts(existing_overlays: list[dict], generated_overlays: dict
     overlays.extend(existing_overlays)
     overlays.extend(generated_overlays.get("overlays") or [])
     return {"overlays": overlays}
+
+
+def _banny_stages(config: PipelineConfig) -> list[str]:
+    if not config.banny_enabled:
+        return []
+    stages = ["banny-validate", "banny-info"]
+    if config.banny_preview_times:
+        stages.append("banny-preview")
+    if config.banny_ship:
+        stages.append("banny-ship")
+    return stages
+
+
+def _preview_path(config: PipelineConfig, timestamp: float) -> Path:
+    return config.run_dir / f"preview-{_preview_slug(timestamp)}.png"
+
+
+def _preview_slug(timestamp: float) -> str:
+    return f"{timestamp:06.3f}".replace(".", "-")
+
+
+def _banny_checklist_lines(config: PipelineConfig, banny_result: Optional[dict[str, Any]]) -> list[str]:
+    if not config.banny_enabled:
+        return [
+            "- [ ] Banny CLI validation was not enabled for this run.",
+            "- [ ] Open and export manually in Banny Studio.",
+        ]
+    if not banny_result:
+        return [
+            "- [ ] Banny CLI validation is enabled and will run after package generation.",
+            "- [ ] Confirm `banny validate` passes before movie export.",
+        ]
+
+    lines = [
+        f"- [x] `banny validate` output: `{banny_result['validate']}`",
+        f"- [x] `banny info --json` output: `{banny_result['info']}`",
+    ]
+    previews = banny_result.get("previews") or []
+    if previews:
+        for preview in previews:
+            lines.append(f"- [ ] Review preview frame at {preview['time']}s: `{preview['path']}`")
+    else:
+        lines.append("- [ ] No Banny preview frames were configured for this run.")
+
+    if banny_result.get("movie"):
+        lines.append(f"- [ ] Play exported movie: `{banny_result['movie']}`")
+    else:
+        lines.append(f"- [ ] Export movie manually to `{config.output_movie}`.")
+    return lines
+
+
+def _handoff_summary(config: PipelineConfig, banny_result: Optional[dict[str, Any]]) -> str:
+    if banny_result and banny_result.get("movie"):
+        return "The repo prepared the package, validated it with the Banny CLI, and rendered the movie headlessly."
+    if config.banny_enabled:
+        return "The repo prepares the package and validates/previews it with the Banny CLI; Banny Studio can still perform final manual export."
+    return "The repo prepares the package; Banny Studio performs the visual preview and movie export."
+
+
+def _handoff_steps(config: PipelineConfig, banny_result: Optional[dict[str, Any]]) -> list[str]:
+    if banny_result and banny_result.get("movie"):
+        return [
+            f"1. Play `{banny_result['movie']}` from start to finish.",
+            "2. Compare the generated preview frames against the intended episode beats.",
+            "3. Open the generated `.bs` package in Banny Studio only if visual or timing fixes are needed.",
+            "4. Record any needed rebuild in the Studio QA checklist.",
+        ]
+    if config.banny_enabled:
+        return [
+            "1. Review the Banny CLI validation and info artifacts.",
+            "2. Review generated preview frames for key moments.",
+            "3. Open the generated `.bs` package in Banny Studio.",
+            "4. Export the full range to the target movie path.",
+            "5. Reopen or play the final movie file and check for missing media.",
+            "6. Record any needed rebuild in the Studio QA checklist.",
+        ]
+    return [
+        "1. Open the generated `.bs` package in Banny Studio.",
+        "2. Preview the full timeline from the beginning.",
+        "3. Confirm dialogue, motion, overlays, and background audio are acceptable.",
+        "4. Export the full range to the target movie path.",
+        "5. Reopen or play the final movie file and check for missing media.",
+        "6. Record any needed rebuild in the Studio QA checklist.",
+    ]

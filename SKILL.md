@@ -1,6 +1,6 @@
 ---
 name: split-peel
-description: Build Banny Studio football commentary episodes with the split-peel repo. Use when Codex needs to generate or modify Banny Studio `.bs` or `.bannyshow` packages from Farcaster football feeds, ESPN match context, two-commentator scripts, character voice profiles, mouth/motion timing, foreground overlays, or the config-driven Studio pipeline.
+description: Build, validate, preview, and render Banny Studio football commentary episodes with the split-peel repo. Use when Codex needs to generate or modify Banny Studio `.bs`, `.bannyshow`, or mp4 outputs from Farcaster football feeds, ESPN match context, two-commentator scripts, character voice profiles, mouth/motion timing, foreground overlays, Banny CLI wardrobe/catalog checks, or the config-driven Studio pipeline.
 ---
 
 # Split Peel
@@ -13,6 +13,7 @@ Use this repo as the execution engine for Banny Studio episode builds. Prefer th
 2. Read [README.md](README.md) for setup, environment variables, command examples, script shape, character configuration, overlays, and package mutation notes.
 3. Read [docs/studio-development-pipeline.md](docs/studio-development-pipeline.md) when the user wants a repeatable episode build, dry run, QA checklist, movie handoff, or Hubs-linked workflow.
 4. Read [docs/hubs-board-blueprint.md](docs/hubs-board-blueprint.md) only when the user asks to plan or operate the Hubs board flow.
+5. Read [references/banny-cli.md](references/banny-cli.md) when the task involves Banny CLI setup, wardrobe/catalog choices, validation, preview frames, headless mp4 render, or `.bs` format details beyond this repo's pipeline.
 
 ## Setup
 
@@ -29,6 +30,8 @@ python -m pytest
 ```
 
 Do not commit `.env`, `runs/`, `outputs/`, `memory/`, or large local Banny templates unless the user explicitly asks. These are ignored generated or local assets.
+
+For Banny CLI validation/rendering, prefer an installed `banny` on `PATH` or `BANNY_BIN`. Use a local `banny-studio` checkout through `BANNY_STUDIO_CHECKOUT` only as a setup fallback. Do not clone or pull `mejango/banny-studio` during every episode run.
 
 ## Common Workflows
 
@@ -67,6 +70,8 @@ split-peel studio-pipeline --config runs/<episode_slug>/pipeline.json --dry-run
 split-peel studio-pipeline --config runs/<episode_slug>/pipeline.json
 ```
 
+When `banny_enabled` is true in the pipeline config, the pipeline validates the generated package with `banny validate`, writes `banny info --json`, creates configured preview frames, and can ship the mp4 with `banny ship`.
+
 ## Episode Rules
 
 - Preserve the source template's reusable staging, characters, lights, and persistent props.
@@ -76,6 +81,9 @@ split-peel studio-pipeline --config runs/<episode_slug>/pipeline.json
 - Pass `--overwrite-script` only when replacing an existing reviewed script is intentional.
 - Use `characters/default.json` unless the user provides another character file.
 - Use `--no-memory` for isolated tests or one-off builds where callbacks to prior episodes would be undesirable.
+- Run `banny catalog --json` before choosing Banny wardrobe names or outfit slots. Never guess outfit names.
+- Run `banny validate` before `banny ship`; validation errors block delivery.
+- Preview at least one key frame per major episode beat before treating an mp4 render as final.
 
 ## Provider Notes
 
@@ -83,4 +91,3 @@ split-peel studio-pipeline --config runs/<episode_slug>/pipeline.json
 - OpenAI script or TTS generation requires `OPENAI_API_KEY` and the `SPLIT_PEEL_*` environment variables documented in `README.md`.
 - ElevenLabs voice generation requires `ELEVENLABS_API_KEY` and per-character voice IDs.
 - Network-backed context fetching or hosted generation can fail without credentials or network access; surface that clearly and fall back to deterministic/local flows when useful.
-

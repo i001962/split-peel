@@ -19,6 +19,8 @@ split-peel studio-pipeline --config examples/studio-pipeline.json --dry-run
 
 The dry run prints the stages and artifact paths without fetching feeds, generating voices, or mutating packages.
 
+Set `"no_feed": true` for ESPN-only episodes. The pipeline writes an empty `feed.json`, skips Farcaster fetching, and drafts from ESPN match context plus producer instructions.
+
 ## Run The Pipeline
 
 ```bash
@@ -37,6 +39,10 @@ The command writes:
 - `runs/<episode_slug>/movie-export-handoff.md`
 - `outputs/<episode_slug>.bs`
 - `outputs/<episode_slug>.bannyshow`
+- `runs/<episode_slug>/banny-validate.json` when Banny CLI integration is enabled
+- `runs/<episode_slug>/banny-info.json` when Banny CLI integration is enabled
+- `runs/<episode_slug>/preview-*.png` for configured Banny preview frames
+- `outputs/<episode_slug>.mp4` when `banny_ship` is enabled
 
 If `runs/<episode_slug>/script.json` already exists, the pipeline stops before redrafting unless `overwrite_script` is set to `true`.
 
@@ -67,7 +73,44 @@ split-peel build-show \
 ```
 
 Only pass `--overwrite-script` to `draft-script` or `make` when replacing a manually edited script is intentional.
-- `outputs/<episode_slug>.mp4` as the target movie export path
+
+## Banny CLI Validation And Render
+
+The pipeline can use the Banny CLI after package generation as the source of truth for validation, metadata, preview frames, and headless movie export.
+
+Config fields:
+
+```json
+{
+  "banny_enabled": true,
+  "banny_bin": null,
+  "banny_checkout_path": null,
+  "banny_render_size": "720",
+  "banny_preview_times": [2, 8, 14],
+  "banny_ship": true
+}
+```
+
+Resolution order:
+
+1. `banny_bin`
+2. `BANNY_BIN`
+3. `banny` on `PATH`
+4. `banny_checkout_path`
+5. `BANNY_STUDIO_CHECKOUT`
+
+Use an installed `banny` or a stable local checkout. Do not clone or pull `mejango/banny-studio` on every pipeline run; update that checkout only during setup or intentional CLI upgrades.
+
+When enabled, the post-build sequence is:
+
+```bash
+banny validate outputs/<episode_slug>.bs --json
+banny info outputs/<episode_slug>.bs --json
+banny preview outputs/<episode_slug>.bs runs/<episode_slug>/preview-02-000.png --t 2
+banny ship outputs/<episode_slug>.bs outputs/<episode_slug>.mp4 --720
+```
+
+Validation errors stop the pipeline. Preview frames and exported movies are added to the manifest and QA checklist.
 
 ## Hubs Review Loop
 

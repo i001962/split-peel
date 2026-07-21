@@ -344,6 +344,23 @@ Do not commit `.env`.
 
 The current local voice path does not require `.env`. It uses macOS `say` and `afconvert` to generate WAV dialogue clips. Provider keys become necessary when the project switches to higher-quality hosted voice, LLM script generation, generated music, or generated imagery.
 
+## Banny CLI Validation And Rendering
+
+For repeatable Studio builds, `split-peel studio-pipeline` can call the Banny CLI after generating the package:
+
+```json
+{
+  "banny_enabled": true,
+  "banny_render_size": "720",
+  "banny_preview_times": [2, 8, 14],
+  "banny_ship": true
+}
+```
+
+The pipeline resolves Banny from `banny_bin`, `BANNY_BIN`, `banny` on `PATH`, `banny_checkout_path`, or `BANNY_STUDIO_CHECKOUT`. Use a stable installed binary or local checkout; do not clone or pull Banny Studio on every episode run.
+
+When enabled, the pipeline runs `banny validate`, `banny info --json`, configured `banny preview` frames, and optionally `banny ship` for the final mp4.
+
 For OpenAI voice generation, use:
 
 ```bash

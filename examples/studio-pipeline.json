@@ -15,5 +15,15 @@
   "instructions_file": null,
   "memory_dir": "memory",
   "no_memory": false,
-  "overwrite_script": false
+  "overwrite_script": false,
+  "banny_enabled": true,
+  "banny_bin": null,
+  "banny_checkout_path": null,
+  "banny_render_size": "720",
+  "banny_preview_times": [
+    2,
+    8,
+    14
+  ],
+  "banny_ship": true
 }
