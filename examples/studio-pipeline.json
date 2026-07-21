@@ -1,0 +1,19 @@
+{
+  "episode_slug": "pipeline-smoke",
+  "template_path": "outputs/openai-voiced.bs",
+  "run_dir": "runs/pipeline-smoke",
+  "output_bs": "outputs/pipeline-smoke.bs",
+  "output_bannyshow": "outputs/pipeline-smoke.bannyshow",
+  "output_movie": "outputs/pipeline-smoke.mp4",
+  "duration_sec": 60,
+  "background_gain": 0.22,
+  "espn_league": "eng.1",
+  "no_espn": false,
+  "overlays_path": null,
+  "characters_path": "characters/default.json",
+  "instructions": "Build a tight Banny and Peel studio commentary episode with clear setup, a sharp middle, and a clean final button.",
+  "instructions_file": null,
+  "memory_dir": "memory",
+  "no_memory": false,
+  "overwrite_script": false
+}

@@ -1,0 +1,13 @@
+{
+  "overlays": [
+    {
+      "name": "foreground-test",
+      "file": "outputs/openai-voiced.bannyshow/assets/amrss1mb8228n3n.png",
+      "start": 2.8,
+      "dur": 5,
+      "x": 0.5,
+      "y": 0.5,
+      "scale": 0.3
+    }
+  ]
+}

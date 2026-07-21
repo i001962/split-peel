@@ -1,0 +1,13 @@
+{
+  "overlays": [
+    {
+      "name": "highlight-replay",
+      "file": "examples/assets/highlight-poster.png",
+      "start": 0,
+      "dur": "full",
+      "x": 0.78,
+      "y": 0.24,
+      "scale": 0.28
+    }
+  ]
+}

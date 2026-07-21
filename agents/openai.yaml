@@ -1,0 +1,4 @@
+interface:
+  display_name: "Split Peel"
+  short_description: "Build Banny Studio football episodes"
+  default_prompt: "Use $split-peel to build a Banny Studio football commentary episode from a template, feed context, and character profiles."

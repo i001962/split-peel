@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Generated pipeline artifacts
+runs/
+outputs/
+memory/
+
+# Large local templates/assets should be copied in as needed, not committed by default.
+templates/*.bs
+templates/*.bannyshow
