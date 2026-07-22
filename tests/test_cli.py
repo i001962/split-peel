@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -103,3 +104,34 @@ def test_make_draft_only_writes_script_without_building(tmp_path: Path, monkeypa
     assert script_path.exists()
     assert not output.exists()
     assert not (tmp_path / "memory").exists()
+
+
+def test_upload_youtube_dry_run_writes_request_metadata(tmp_path: Path, capsys):
+    movie = tmp_path / "episode.mp4"
+    out = tmp_path / "youtube-upload.json"
+    movie.write_text("mp4", encoding="utf-8")
+
+    main(
+        [
+            "upload-youtube",
+            "--file",
+            str(movie),
+            "--title",
+            "Episode Title",
+            "--description",
+            "Episode description",
+            "--tags",
+            "football,final whistle",
+            "--out",
+            str(out),
+            "--dry-run",
+        ]
+    )
+
+    printed = json.loads(capsys.readouterr().out)
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert printed["dry_run"] is True
+    assert written["request"]["body"]["snippet"]["title"] == "Episode Title"
+    assert written["request"]["body"]["snippet"]["tags"] == ["football", "final whistle"]
+    assert written["request"]["body"]["status"]["privacyStatus"] == "private"
+    assert written["request"]["body"]["status"]["selfDeclaredMadeForKids"] is False

@@ -49,6 +49,8 @@ split-peel fetch-scoreboard --espn-league eng.1 --out runs/<episode_slug>/scoreb
 split-peel draft-script --feed runs/<episode_slug>/feed.json --match-context runs/<episode_slug>/match_context.json --out runs/<episode_slug>/script.json --duration-sec 60
 ```
 
+For `game-week-preview`, treat `match_context.matches[]` as the primary slate. The generated ESPN overlay manifest should render paged matchup graphics from all returned fixtures, not only the selected `match`; each slate page shows logo-v-logo rows and kickoff times.
+
 Build a show from a reviewed script:
 
 ```bash

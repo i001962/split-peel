@@ -5,7 +5,7 @@ Format:
 - Use a stadium gantry booth feel: pitch and stands behind them, announcers in the foreground.
 - Put the home and away team logos above the characters.
 - Keep the matchup, score or status, and key ESPN moments centered.
-- For game-week preview episodes, cover every ENG.1 match in the selected ESPN scoreboard.
+- For game-week preview episodes, cover every ENG.1 match in the selected ESPN scoreboard, using the paged matchup slate overlays for logo-v-logo, kickoff time, and fixture order.
 - For match-event episodes, focus on the selected ESPN match id.
 - For recap episodes, lead with the final score and the strongest key moments.
 - For outtake episodes, make it a behind-the-scenes cold open with sarcastic hot-mic energy, occasional foul language, and no polished welcome or creator signoff.

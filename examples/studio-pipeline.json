@@ -28,5 +28,21 @@
     8,
     14
   ],
-  "banny_ship": true
+  "banny_ship": true,
+  "youtube_upload_enabled": false,
+  "youtube_credentials": null,
+  "youtube_token": ".secrets/youtube-token.json",
+  "youtube_title": null,
+  "youtube_description": null,
+  "youtube_description_file": null,
+  "youtube_tags": [
+    "football",
+    "final whistle"
+  ],
+  "youtube_category_id": "17",
+  "youtube_privacy_status": "private",
+  "youtube_notify_subscribers": false,
+  "youtube_made_for_kids": false,
+  "youtube_contains_synthetic_media": null,
+  "youtube_thumbnail": null
 }

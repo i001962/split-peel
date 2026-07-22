@@ -26,6 +26,7 @@ from split_peel.pipeline import (
     write_pipeline_config_template,
 )
 from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
+from split_peel.youtube import YouTubeUploadMetadata, upload_video
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -123,6 +124,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     pipeline_parser.add_argument("--config", type=Path, required=True)
     pipeline_parser.add_argument("--dry-run", action="store_true")
     pipeline_parser.add_argument("--init-config", action="store_true")
+
+    youtube_parser = subparsers.add_parser("upload-youtube", help="Upload a finished movie to YouTube.")
+    youtube_parser.add_argument("--file", type=Path, required=True)
+    youtube_parser.add_argument("--title", required=True)
+    youtube_parser.add_argument("--description", default="")
+    youtube_parser.add_argument("--description-file", type=Path)
+    youtube_parser.add_argument("--tags", default="")
+    youtube_parser.add_argument("--category-id", default="17")
+    youtube_parser.add_argument("--privacy-status", default="private", choices=["private", "public", "unlisted"])
+    youtube_parser.add_argument("--notify-subscribers", action="store_true")
+    youtube_parser.add_argument("--made-for-kids", action="store_true")
+    youtube_parser.add_argument("--contains-synthetic-media", action="store_true")
+    youtube_parser.add_argument("--credentials", type=Path)
+    youtube_parser.add_argument("--token", type=Path)
+    youtube_parser.add_argument("--thumbnail", type=Path)
+    youtube_parser.add_argument("--out", type=Path)
+    youtube_parser.add_argument("--dry-run", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -227,7 +245,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             match_context = normalize_scoreboard(scoreboard, match_id=args.match_id)
             download_match_logos(match_context, args.run_dir / "espn-assets")
             write_json(match_context_path, match_context)
-            overlays = _merged_overlays(args.overlays, build_scoreboard_overlays(match_context))
+            overlays = _merged_overlays(args.overlays, build_scoreboard_overlays(match_context, episode_type=args.episode_type))
             write_json(espn_overlays_path, overlays)
             overlays_path = espn_overlays_path
 
@@ -303,6 +321,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(manifest, indent=2))
         return 0
 
+    if args.command == "upload-youtube":
+        description = _instructions(args.description, args.description_file) or ""
+        result = upload_video(
+            args.file,
+            YouTubeUploadMetadata(
+                title=args.title,
+                description=description,
+                tags=_tags(args.tags),
+                category_id=args.category_id,
+                privacy_status=args.privacy_status,
+                notify_subscribers=args.notify_subscribers,
+                made_for_kids=args.made_for_kids,
+                contains_synthetic_media=True if args.contains_synthetic_media else None,
+            ),
+            credentials_path=args.credentials,
+            token_path=args.token,
+            thumbnail_path=args.thumbnail,
+            out_path=args.out,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -344,6 +385,10 @@ def _merged_overlay_dicts(existing_overlays: list[dict], generated_overlays: dic
     overlays.extend(existing_overlays)
     overlays.extend(generated_overlays.get("overlays") or [])
     return {"overlays": overlays}
+
+
+def _tags(value: str) -> tuple[str, ...]:
+    return tuple(tag.strip() for tag in value.split(",") if tag.strip())
 
 
 if __name__ == "__main__":

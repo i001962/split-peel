@@ -96,6 +96,7 @@ split-peel inspect-template --template /path/to/WorldCupAll.bs
 split-peel roundtrip --template /path/to/WorldCupAll.bs --out outputs/roundtrip.bs
 split-peel unpack --template outputs/smoke.bs --out outputs/smoke.bannyshow
 split-peel build-show --template templates/WorldCupAll.bs --script runs/latest/script.json --out outputs/episode.bs
+split-peel upload-youtube --file outputs/episode.mp4 --title "Final Whistle: Match Preview" --privacy-status private --dry-run
 ```
 
 Cheap script-only pass:
@@ -169,7 +170,31 @@ split-peel unpack \
   --overwrite
 ```
 
-By default, `split-peel make` also fetches the ESPN Premier League scoreboard, normalizes one featured match, downloads team logos, extracts ESPN key moments when present, and generates ESPN logo/score/key-moment overlays. Use `--no-espn` to disable that source.
+Upload a reviewed movie export to YouTube as an explicit final step:
+
+```bash
+split-peel upload-youtube \
+  --file outputs/<episode>.mp4 \
+  --title "Final Whistle: ENG1 Game Week Preview" \
+  --description-file runs/<episode>/youtube-description.md \
+  --tags "football,final whistle,premier league" \
+  --category-id 17 \
+  --privacy-status private \
+  --credentials .secrets/youtube-client.json \
+  --token .secrets/youtube-token.json \
+  --thumbnail runs/<episode>/thumbnail.png \
+  --out runs/<episode>/youtube-upload.json
+```
+
+Install the optional YouTube dependencies before first use:
+
+```bash
+pip install 'split-peel[youtube]'
+```
+
+The upload command sets the YouTube fields the API needs for this workflow: title, description, tags, category, privacy status, subscriber notification preference, and the made-for-kids declaration. The default privacy is `private`, default category is `17` (sports), and `--dry-run` prints/writes the request without authenticating or uploading. A thumbnail is optional in YouTube's upload API; pass `--thumbnail` when a reviewed image is ready.
+
+By default, `split-peel make` also fetches the ESPN Premier League scoreboard, normalizes one featured match plus the full ESPN event slate, downloads team logos, extracts ESPN key moments when present, and generates ESPN overlays. Match-event and recap episodes use the featured match logos, score, and key-moment graphics. Game-week-preview episodes use the full `match_context.matches` slate and render paged matchup overlays with logo-v-logo rows, kickoff time, and UTC zone labels. Use `--no-espn` to disable that source.
 
 Final Whistle season runs can pass reusable episode metadata directly through the CLI:
 
@@ -185,6 +210,8 @@ split-peel make \
 ```
 
 Use `--episode-type match-event --match-id <espn-event-id>` for an individual match show, `--episode-type recap --match-id <espn-event-id>` after ESPN marks the match completed, and `--episode-type outtake` for a behind-the-scenes cold-open version with hotter booth sarcasm and a static-disconnect ending.
+
+For `--episode-type game-week-preview`, ESPN can return many fixtures. The preview overlay renderer shows up to five matches per slate page, creates at most two slate pages, and adds a `+ N more fixtures` note when the ESPN slate is longer than ten matches. The scriptwriter is also told to talk about the full slate instead of only the featured `match`.
 
 When a generated dialogue line calls out a Farcaster user from `sourceCasts`, the pipeline downloads that user's `pfp_url` and adds it as a timed foreground overlay near the line where they are mentioned.
 
@@ -280,11 +307,11 @@ Artifact roles:
 |---|---|---|
 | `runs/<episode>/feed.json` | Cached football-channel feed | Cheap |
 | `runs/<episode>/scoreboard.json` | Raw ESPN scoreboard response | Cheap |
-| `runs/<episode>/match_context.json` | Normalized selected ESPN match | Cheap |
+| `runs/<episode>/match_context.json` | Normalized ESPN context: selected `match`, full `matches[]` slate, league, teams, logos, key moments | Cheap |
 | `runs/<episode>/script.json` | Dialogue, episode metadata, preroll, outro effect | Cheap until `build-show` |
-| `runs/<episode>/espn-overlays.json` | Stadium/title plus ESPN logos, score, key-moment panel | Cheap |
+| `runs/<episode>/espn-overlays.json` | Stadium/title plus ESPN logos, score, key-moment panel, or paged game-week slate overlays | Cheap |
 | `runs/<episode>/pfp-overlays.json` | Final merged overlay manifest passed into package build | Cheap |
-| `runs/<episode>/espn-assets/` | Downloaded/generated logo and score panel images | Cheap |
+| `runs/<episode>/espn-assets/` | Downloaded logos plus generated score, key-moment, and game-week slate images | Cheap |
 | `runs/<episode>/key-moment-assets/` | Full-screen key-moment takeover graphics | Cheap |
 | `outputs/<episode>.bs` | Banny Studio package with generated audio | Expensive to recreate with hosted voices |
 | `outputs/<episode>.bannyshow/` | Unpacked editable Studio folder | No hosted voice cost |

@@ -77,6 +77,8 @@ def test_normalize_scoreboard_extracts_featured_match():
     assert context["match"]["teams"][0]["abbreviation"] == "ARS"
     assert context["match"]["keyMoments"][0]["text"] == "Bukayo Saka scores"
     assert context["match"]["keyMoments"][0]["team"] == "Arsenal"
+    assert len(context["matches"]) == 1
+    assert context["match"] is context["matches"][0]
 
 
 def test_normalize_scoreboard_flattens_espn_soccer_detail_objects():
@@ -150,6 +152,7 @@ def test_normalize_scoreboard_selects_explicit_match_id():
 
     assert context["match"]["id"] == "2"
     assert context["match"]["shortName"] == "TWO @ CHO"
+    assert [match["id"] for match in context["matches"]] == ["1", "2"]
 
 
 def test_normalize_scoreboard_errors_for_missing_match_id():
@@ -280,3 +283,40 @@ def test_build_scoreboard_overlays_adds_key_moments_center_panel(tmp_path):
     assert moments_overlay["y"] == 0.31
     assert moments_overlay["file"] == str(tmp_path / "key-moments-overlay.png")
     assert (tmp_path / "key-moments-overlay.png").exists()
+
+
+def test_build_scoreboard_overlays_adds_paged_game_week_slate(tmp_path):
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"fake")
+    matches = []
+    for index in range(7):
+        matches.append(
+            {
+                "id": str(index),
+                "date": f"2026-08-{21 + index:02d}T19:00:00Z",
+                "teams": [
+                    {
+                        "homeAway": "home",
+                        "name": f"Home {index}",
+                        "shortName": f"Home {index}",
+                        "localLogo": str(logo),
+                    },
+                    {
+                        "homeAway": "away",
+                        "name": f"Away {index}",
+                        "shortName": f"Away {index}",
+                        "localLogo": str(logo),
+                    },
+                ],
+            }
+        )
+
+    manifest = build_scoreboard_overlays({"matches": matches, "match": matches[0]}, episode_type="game-week-preview")
+
+    assert [overlay["name"] for overlay in manifest["overlays"]] == ["game week slate 1", "game week slate 2"]
+    assert manifest["overlays"][0]["start"] == 8
+    assert manifest["overlays"][1]["start"] == 20
+    assert manifest["overlays"][0]["x"] == 0.5
+    assert manifest["overlays"][0]["y"] == 0.48
+    assert (tmp_path / "game-week-slate-1.png").exists()
+    assert (tmp_path / "game-week-slate-2.png").exists()

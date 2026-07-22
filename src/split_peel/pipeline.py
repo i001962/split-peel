@@ -21,6 +21,14 @@ from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_epis
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
 from split_peel.scriptwriter import draft_script
+from split_peel.youtube import (
+    DEFAULT_YOUTUBE_CATEGORY_ID,
+    DEFAULT_YOUTUBE_PRIVACY_STATUS,
+    YouTubeUploadError,
+    YouTubeUploadMetadata,
+    build_youtube_description,
+    upload_video,
+)
 
 
 class PipelineError(RuntimeError):
@@ -64,6 +72,19 @@ class PipelineConfig:
     banny_render_size: str = "720"
     banny_preview_times: tuple[float, ...] = ()
     banny_ship: bool = False
+    youtube_upload_enabled: bool = False
+    youtube_credentials: Optional[Path] = None
+    youtube_token: Optional[Path] = None
+    youtube_title: Optional[str] = None
+    youtube_description: Optional[str] = None
+    youtube_description_file: Optional[Path] = None
+    youtube_tags: tuple[str, ...] = ()
+    youtube_category_id: str = DEFAULT_YOUTUBE_CATEGORY_ID
+    youtube_privacy_status: str = DEFAULT_YOUTUBE_PRIVACY_STATUS
+    youtube_notify_subscribers: bool = False
+    youtube_made_for_kids: bool = False
+    youtube_contains_synthetic_media: Optional[bool] = None
+    youtube_thumbnail: Optional[Path] = None
 
 
 def load_pipeline_config(path: Path) -> PipelineConfig:
@@ -112,6 +133,19 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         banny_render_size=_render_size(payload.get("banny_render_size") or "720"),
         banny_preview_times=_preview_times(payload.get("banny_preview_times")),
         banny_ship=bool(payload.get("banny_ship", False)),
+        youtube_upload_enabled=bool(payload.get("youtube_upload_enabled", False)),
+        youtube_credentials=_optional_path(payload.get("youtube_credentials"), base_dir),
+        youtube_token=_optional_path(payload.get("youtube_token"), base_dir),
+        youtube_title=payload.get("youtube_title"),
+        youtube_description=payload.get("youtube_description"),
+        youtube_description_file=_optional_path(payload.get("youtube_description_file"), base_dir),
+        youtube_tags=_string_tuple(payload.get("youtube_tags")),
+        youtube_category_id=str(payload.get("youtube_category_id") or DEFAULT_YOUTUBE_CATEGORY_ID),
+        youtube_privacy_status=_youtube_privacy_status(payload.get("youtube_privacy_status") or DEFAULT_YOUTUBE_PRIVACY_STATUS),
+        youtube_notify_subscribers=bool(payload.get("youtube_notify_subscribers", False)),
+        youtube_made_for_kids=bool(payload.get("youtube_made_for_kids", False)),
+        youtube_contains_synthetic_media=_optional_bool(payload.get("youtube_contains_synthetic_media")),
+        youtube_thumbnail=_optional_path(payload.get("youtube_thumbnail"), base_dir),
     )
 
 
@@ -151,6 +185,19 @@ def write_pipeline_config_template(path: Path) -> None:
         "banny_render_size": "720",
         "banny_preview_times": [2, 8, 14],
         "banny_ship": True,
+        "youtube_upload_enabled": False,
+        "youtube_credentials": None,
+        "youtube_token": ".secrets/youtube-token.json",
+        "youtube_title": None,
+        "youtube_description": None,
+        "youtube_description_file": None,
+        "youtube_tags": ["football", "final whistle"],
+        "youtube_category_id": DEFAULT_YOUTUBE_CATEGORY_ID,
+        "youtube_privacy_status": DEFAULT_YOUTUBE_PRIVACY_STATUS,
+        "youtube_notify_subscribers": False,
+        "youtube_made_for_kids": False,
+        "youtube_contains_synthetic_media": None,
+        "youtube_thumbnail": None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -188,6 +235,8 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             ]
         if config.banny_ship:
             artifacts["output_movie"] = str(config.output_movie)
+    if config.youtube_upload_enabled and not config.draft_only:
+        artifacts["youtube_upload"] = str(config.run_dir / "youtube-upload.json")
 
     return {
         "episode_slug": config.episode_slug,
@@ -212,6 +261,7 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             "draft-script",
             *([] if config.draft_only else ["build-show", "unpack", *_banny_stages(config)]),
             *([] if config.draft_only else ["write-movie-export-handoff", "write-studio-qa-checklist"]),
+            *([] if config.draft_only or not config.youtube_upload_enabled else ["youtube-upload"]),
             "write-pipeline-manifest",
         ],
         "artifacts": artifacts,
@@ -248,7 +298,13 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         match_context = normalize_scoreboard(scoreboard, match_id=config.match_id)
         download_match_logos(match_context, config.run_dir / "espn-assets")
         write_json(match_context_path, match_context)
-        write_json(espn_overlays_path, _merge_overlay_dicts(load_overlay_manifest(overlays_path), build_scoreboard_overlays(match_context)))
+        write_json(
+            espn_overlays_path,
+            _merge_overlay_dicts(
+                load_overlay_manifest(overlays_path),
+                build_scoreboard_overlays(match_context, episode_type=config.episode_type),
+            ),
+        )
         overlays_path = espn_overlays_path
 
     characters = load_characters(config.characters_path)
@@ -314,6 +370,7 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     handoff_path = config.run_dir / "movie-export-handoff.md"
     write_studio_qa_checklist(config, qa_path, banny_result=banny_result)
     write_movie_export_handoff(config, handoff_path, banny_result=banny_result)
+    youtube_result = run_youtube_upload(config, script) if config.youtube_upload_enabled else None
 
     manifest = {
         **plan,
@@ -322,11 +379,39 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         "final_overlays": str(overlays_path) if overlays_path else None,
         "movie_export_path": str(config.output_movie),
         "banny": banny_result,
-        "delivery_status": "movie-exported" if banny_result and banny_result.get("movie") else "awaiting-studio-export",
+        "youtube": youtube_result,
+        "delivery_status": _delivery_status(banny_result, youtube_result),
         "status": "ready-for-studio-qa",
     }
     write_json(config.run_dir / "pipeline-manifest.json", manifest)
     return manifest
+
+
+def run_youtube_upload(config: PipelineConfig, script: dict[str, Any]) -> dict[str, Any]:
+    if not config.output_movie.exists():
+        raise PipelineError(f"YouTube upload is enabled but movie file does not exist: {config.output_movie}")
+    title = _youtube_title(config, script)
+    description = _youtube_description(config, script)
+    try:
+        return upload_video(
+            config.output_movie,
+            YouTubeUploadMetadata(
+                title=title,
+                description=description,
+                tags=config.youtube_tags,
+                category_id=config.youtube_category_id,
+                privacy_status=config.youtube_privacy_status,
+                notify_subscribers=config.youtube_notify_subscribers,
+                made_for_kids=config.youtube_made_for_kids,
+                contains_synthetic_media=config.youtube_contains_synthetic_media,
+            ),
+            credentials_path=config.youtube_credentials,
+            token_path=config.youtube_token,
+            thumbnail_path=config.youtube_thumbnail,
+            out_path=config.run_dir / "youtube-upload.json",
+        )
+    except YouTubeUploadError as error:
+        raise PipelineError(str(error)) from error
 
 
 def run_banny_post_build(config: PipelineConfig) -> dict[str, Any]:
@@ -488,6 +573,12 @@ def _optional_float(value: Any) -> Optional[float]:
     return float(value)
 
 
+def _optional_bool(value: Any) -> Optional[bool]:
+    if value in (None, ""):
+        return None
+    return bool(value)
+
+
 def _render_size(value: Any) -> str:
     size = str(value)
     if size not in {"480", "720", "1080", "4k"}:
@@ -503,6 +594,23 @@ def _preview_times(value: Any) -> tuple[float, ...]:
     return tuple(float(item) for item in value)
 
 
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if value in (None, ""):
+        return ()
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    if isinstance(value, list):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    raise PipelineError("youtube_tags must be a list of strings or comma-separated string")
+
+
+def _youtube_privacy_status(value: Any) -> str:
+    status = str(value)
+    if status not in {"private", "public", "unlisted"}:
+        raise PipelineError("youtube_privacy_status must be one of: private, public, unlisted")
+    return status
+
+
 def _instructions(inline: Optional[str], path: Optional[Path]) -> Optional[str]:
     pieces = []
     if inline:
@@ -510,6 +618,30 @@ def _instructions(inline: Optional[str], path: Optional[Path]) -> Optional[str]:
     if path:
         pieces.append(path.read_text(encoding="utf-8").strip())
     return "\n".join(piece for piece in pieces if piece).strip() or None
+
+
+def _youtube_title(config: PipelineConfig, script: dict[str, Any]) -> str:
+    return (
+        (config.youtube_title or "").strip()
+        or str(script.get("title") or "").strip()
+        or (config.episode_title or "").strip()
+        or config.episode_slug
+    )
+
+
+def _youtube_description(config: PipelineConfig, script: dict[str, Any]) -> str:
+    configured = _instructions(config.youtube_description, config.youtube_description_file)
+    if configured:
+        return configured
+    return build_youtube_description(script, show_name=config.show_name, tagline=config.tagline)
+
+
+def _delivery_status(banny_result: Optional[dict[str, Any]], youtube_result: Optional[dict[str, Any]]) -> str:
+    if youtube_result and youtube_result.get("video_id"):
+        return "uploaded-to-youtube"
+    if banny_result and banny_result.get("movie"):
+        return "movie-exported"
+    return "awaiting-studio-export"
 
 
 def _merge_overlay_dicts(existing_overlays: list[dict], generated_overlays: dict) -> dict:

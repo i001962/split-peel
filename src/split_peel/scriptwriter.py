@@ -283,6 +283,7 @@ def _dialogue_rules_for_episode(episode_type: str) -> list[str]:
         "Do not write a show welcome or signoff; the system adds those separately.",
         "Each line should be punchy enough for captions.",
         "Use specific match facts, venue, forms, team names, and absurd football logic.",
+        "For game-week-preview episodes, cover the matchContext.matches slate rather than only the featured match.",
         "For spoken lines, always use full team names from matchContext.match.teams; abbreviations like ARS or PSG are for graphics only.",
         "Expand weekday abbreviations in spoken lines, for example say Friday instead of Fri.",
         "If matchContext.match.keyMoments is present, make at least two lines react directly to those moments with the clock, player or team, and event type.",
@@ -616,7 +617,9 @@ def _draft_dialogue(
     match_relevant_casts = [cast for cast in casts if cast.match_hits > 0] if match else casts
     social_allowed = _social_references_allowed(instructions)
 
-    if match:
+    if episode_type == "game-week-preview":
+        lines.extend(_game_week_preview_lines(match_context, speakers))
+    elif match:
         lines.extend(_key_moment_lines(match, speakers))
 
     if match and not match_relevant_casts:
@@ -736,6 +739,35 @@ def _no_relevant_cast_lines(match: dict[str, Any], speakers: list[str], social_a
             "The match card is light on chaos but heavy on opportunity, which is exactly when football starts rearranging furniture.",
             "analysis",
         )
+    ]
+
+
+def _game_week_preview_lines(match_context: Optional[dict[str, Any]], speakers: list[str]) -> list[tuple[str, str, str]]:
+    matches = [
+        match
+        for match in (match_context or {}).get("matches") or []
+        if isinstance(match, dict) and len(match.get("teams") or []) >= 2
+    ]
+    if len(matches) <= 1:
+        return []
+
+    featured = matches[:4]
+    labels = []
+    for match in featured:
+        teams = match.get("teams") or []
+        labels.append(f"{_team_name(teams[0], 'one side')} versus {_team_name(teams[1], 'the other')}")
+    more_clause = f", with {len(matches) - len(featured)} more waiting behind the curtain" if len(matches) > len(featured) else ""
+    return [
+        (
+            speakers[0],
+            f"The slate has {len(matches)} fixtures on deck: {', '.join(labels)}{more_clause}. That is not a schedule, that is a group chat with studs.",
+            "fast fixture-desk setup, delighted by the pile-up",
+        ),
+        (
+            speakers[1 % len(speakers)],
+            "I have ranked them by chaos, travel snacks, and which kickoff time looks most likely to ruin someone's very sensible weekend plan.",
+            "playful analyst confidence, tiny conspiratorial lean",
+        ),
     ]
 
 

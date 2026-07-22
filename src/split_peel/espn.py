@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 import urllib.parse
 import urllib.error
 import urllib.request
@@ -32,64 +33,110 @@ def fetch_scoreboard(url: str = DEFAULT_ESPN_SCOREBOARD_URL, timeout: int = 30) 
 def normalize_scoreboard(scoreboard: dict[str, Any], match_id: Optional[str] = None) -> dict[str, Any]:
     events = scoreboard.get("events") or []
     if not events:
-        return {"league": _league_context(scoreboard), "match": None}
+        return {"league": _league_context(scoreboard), "match": None, "matches": []}
 
-    event = _select_event(events, match_id)
-    competition = (event.get("competitions") or [{}])[0]
-    status = event.get("status") or competition.get("status") or {}
-    venue = event.get("venue") or competition.get("venue") or {}
+    matches = [_normalize_event(event) for event in events]
+    selected_event = _select_event(events, match_id)
+    selected_id = str(selected_event.get("id") or "")
+    selected_match = next((match for match in matches if str(match.get("id") or "") == selected_id), matches[0])
 
     return {
         "league": _league_context(scoreboard),
-        "match": {
-            "id": event.get("id"),
-            "name": event.get("name"),
-            "shortName": event.get("shortName"),
-            "date": event.get("date"),
-            "status": {
-                "state": ((status.get("type") or {}).get("state")),
-                "description": ((status.get("type") or {}).get("description")),
-                "detail": ((status.get("type") or {}).get("detail")),
-                "shortDetail": ((status.get("type") or {}).get("shortDetail")),
-            },
-            "venue": {
-                "name": venue.get("displayName") or venue.get("fullName"),
-                "city": ((venue.get("address") or {}).get("city")),
-                "country": ((venue.get("address") or {}).get("country")),
-            },
-            "teams": [_normalize_competitor(competitor) for competitor in competition.get("competitors") or []],
-            "keyMoments": _key_moments(event, competition),
+        "match": selected_match,
+        "matches": matches,
+    }
+
+
+def _normalize_event(event: dict[str, Any]) -> dict[str, Any]:
+    competition = (event.get("competitions") or [{}])[0]
+    status = event.get("status") or competition.get("status") or {}
+    venue = event.get("venue") or competition.get("venue") or {}
+    return {
+        "id": event.get("id"),
+        "name": event.get("name"),
+        "shortName": event.get("shortName"),
+        "date": event.get("date"),
+        "status": {
+            "state": ((status.get("type") or {}).get("state")),
+            "description": ((status.get("type") or {}).get("description")),
+            "detail": ((status.get("type") or {}).get("detail")),
+            "shortDetail": ((status.get("type") or {}).get("shortDetail")),
         },
+        "venue": {
+            "name": venue.get("displayName") or venue.get("fullName"),
+            "city": ((venue.get("address") or {}).get("city")),
+            "country": ((venue.get("address") or {}).get("country")),
+        },
+        "teams": [_normalize_competitor(competitor) for competitor in competition.get("competitors") or []],
+        "keyMoments": _key_moments(event, competition),
     }
 
 
 def download_match_logos(match_context: dict[str, Any], asset_dir: Path) -> list[dict[str, Any]]:
-    match = match_context.get("match")
-    if not match:
+    matches = _context_matches(match_context)
+    if not matches:
         return []
 
     asset_dir.mkdir(parents=True, exist_ok=True)
     downloaded: list[dict[str, Any]] = []
-    for team in match.get("teams") or []:
-        logo_url = team.get("logo")
-        if not logo_url:
-            continue
-        suffix = Path(urllib.parse.urlparse(logo_url).path).suffix or ".png"
-        filename = f"{_slug(team.get('abbreviation') or team.get('name') or 'team')}-logo{suffix}"
-        path = asset_dir / filename
-        request = urllib.request.Request(logo_url, headers={"User-Agent": "split-peel/0.1"})
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                path.write_bytes(response.read())
-        except (TimeoutError, OSError, urllib.error.URLError) as error:
-            team["logoDownloadError"] = str(error)
-            continue
-        team["localLogo"] = str(path)
-        downloaded.append({"team": team.get("name"), "path": str(path)})
+    seen: set[str] = set()
+    for match in matches:
+        for team in match.get("teams") or []:
+            logo_url = team.get("logo")
+            if not logo_url:
+                continue
+            team_key = str(team.get("id") or team.get("abbreviation") or team.get("name") or logo_url)
+            if team_key in seen:
+                existing = _existing_logo_path(match_context, team_key)
+                if existing:
+                    team["localLogo"] = existing
+                continue
+            seen.add(team_key)
+            _download_team_logo(team, asset_dir, downloaded)
     return downloaded
 
 
-def build_scoreboard_overlays(match_context: dict[str, Any]) -> dict[str, Any]:
+def _context_matches(match_context: dict[str, Any]) -> list[dict[str, Any]]:
+    matches = [match for match in match_context.get("matches") or [] if isinstance(match, dict)]
+    match = match_context.get("match")
+    if isinstance(match, dict) and match not in matches:
+        matches.insert(0, match)
+    return matches
+
+
+def _existing_logo_path(match_context: dict[str, Any], team_key: str) -> Optional[str]:
+    for match in _context_matches(match_context):
+        for team in match.get("teams") or []:
+            current_key = str(team.get("id") or team.get("abbreviation") or team.get("name") or team.get("logo") or "")
+            if current_key == team_key and team.get("localLogo"):
+                return str(team["localLogo"])
+    return None
+
+
+def _download_team_logo(team: dict[str, Any], asset_dir: Path, downloaded: list[dict[str, Any]]) -> None:
+    logo_url = team.get("logo")
+    if not logo_url:
+        return
+    suffix = Path(urllib.parse.urlparse(logo_url).path).suffix or ".png"
+    filename = f"{_slug(team.get('abbreviation') or team.get('name') or 'team')}-logo{suffix}"
+    path = asset_dir / filename
+    request = urllib.request.Request(logo_url, headers={"User-Agent": "split-peel/0.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            path.write_bytes(response.read())
+    except (TimeoutError, OSError, urllib.error.URLError) as error:
+        team["logoDownloadError"] = str(error)
+        return
+    team["localLogo"] = str(path)
+    downloaded.append({"team": team.get("name"), "path": str(path)})
+
+
+def build_scoreboard_overlays(match_context: dict[str, Any], episode_type: str = "match-event") -> dict[str, Any]:
+    if episode_type == "game-week-preview":
+        slate_overlays = _game_week_preview_overlays(match_context)
+        if slate_overlays:
+            return {"overlays": slate_overlays}
+
     match = match_context.get("match")
     if not match:
         return {"overlays": []}
@@ -127,6 +174,131 @@ def build_scoreboard_overlays(match_context: dict[str, Any]) -> dict[str, Any]:
         overlays.append(moments_overlay)
 
     return {"overlays": overlays}
+
+
+def _game_week_preview_overlays(match_context: dict[str, Any]) -> list[dict[str, Any]]:
+    matches = [match for match in match_context.get("matches") or [] if _match_has_two_teams(match)]
+    if not matches:
+        match = match_context.get("match")
+        matches = [match] if isinstance(match, dict) and _match_has_two_teams(match) else []
+    if not matches:
+        return []
+
+    asset_dir = _slate_asset_dir(matches)
+    if asset_dir is None:
+        return []
+    asset_dir.mkdir(parents=True, exist_ok=True)
+
+    page_size = 5
+    max_pages = 2
+    pages = [matches[index : index + page_size] for index in range(0, min(len(matches), page_size * max_pages), page_size)]
+    overlays: list[dict[str, Any]] = []
+    for page_index, page_matches in enumerate(pages):
+        remaining = max(0, len(matches) - ((page_index + 1) * page_size))
+        path = asset_dir / f"game-week-slate-{page_index + 1}.png"
+        _render_game_week_slate(page_matches, path, page_index + 1, len(pages), remaining if page_index == len(pages) - 1 else 0)
+        overlays.append(
+            {
+                "name": f"game week slate {page_index + 1}",
+                "file": str(path),
+                "start": 8 + page_index * 12,
+                "dur": 12,
+                "x": 0.5,
+                "y": 0.48,
+                "scale": 0.58,
+            }
+        )
+    return overlays
+
+
+def _match_has_two_teams(match: Any) -> bool:
+    return isinstance(match, dict) and len(match.get("teams") or []) >= 2
+
+
+def _slate_asset_dir(matches: list[dict[str, Any]]) -> Optional[Path]:
+    for match in matches:
+        asset_dir = _score_asset_dir(match.get("teams") or [])
+        if asset_dir:
+            return asset_dir
+    return None
+
+
+def _render_game_week_slate(
+    matches: list[dict[str, Any]],
+    path: Path,
+    page_number: int,
+    page_count: int,
+    remaining_count: int = 0,
+) -> None:
+    width, height = 1120, 620
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((24, 20, width - 24, height - 20), radius=26, fill=(4, 8, 18, 224), outline=(255, 255, 255, 86), width=2)
+    title_font = _score_font(44)
+    meta_font = _score_font(22)
+    team_font = _score_font(28)
+    time_font = _score_font(24)
+
+    draw.text((52, 42), "GAME WEEK PREVIEW", font=title_font, fill=(255, 255, 255, 255))
+    draw.text((width - 176, 56), f"PAGE {page_number}/{page_count}", font=meta_font, fill=(157, 235, 211, 255))
+    y = 120
+    row_h = 88
+    for match in matches:
+        teams = match.get("teams") or []
+        left, right = _home_away_pair(teams)
+        draw.rounded_rectangle((48, y, width - 48, y + 70), radius=16, fill=(12, 24, 38, 234), outline=(255, 255, 255, 40), width=1)
+        _paste_logo(image, left.get("localLogo"), 82, y + 11, 48)
+        _paste_logo(image, right.get("localLogo"), 690, y + 11, 48)
+        draw.text((146, y + 19), _fit_text(_team_label(left), 24), font=team_font, fill=(255, 255, 255, 255))
+        draw.text((560, y + 21), "v", font=team_font, fill=(250, 211, 60, 255))
+        draw.text((754, y + 19), _fit_text(_team_label(right), 24), font=team_font, fill=(255, 255, 255, 255))
+        kickoff = _kickoff_label(match)
+        bbox = draw.textbbox((0, 0), kickoff, font=time_font)
+        draw.text((width - 70 - (bbox[2] - bbox[0]), y + 22), kickoff, font=time_font, fill=(190, 225, 255, 255))
+        y += row_h
+
+    if remaining_count:
+        draw.text((54, height - 58), f"+ {remaining_count} more fixtures on the ESPN slate", font=time_font, fill=(250, 211, 60, 255))
+    image.save(path)
+
+
+def _home_away_pair(teams: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    home = next((team for team in teams if str(team.get("homeAway")).lower() == "home"), teams[0])
+    away = next((team for team in teams if str(team.get("homeAway")).lower() == "away"), teams[1])
+    return home, away
+
+
+def _team_label(team: dict[str, Any]) -> str:
+    return str(team.get("shortName") or team.get("name") or team.get("abbreviation") or "Team")
+
+
+def _kickoff_label(match: dict[str, Any]) -> str:
+    date = str(match.get("date") or "").strip()
+    if date:
+        try:
+            normalized = date.replace("Z", "+00:00")
+            kickoff = datetime.fromisoformat(normalized).astimezone(timezone.utc)
+            return kickoff.strftime("%a %H:%M UTC")
+        except ValueError:
+            pass
+    status = match.get("status") or {}
+    return str(status.get("shortDetail") or status.get("detail") or status.get("description") or "TBD")
+
+
+def _paste_logo(image: Image.Image, logo_path: Any, x: int, y: int, size: int) -> None:
+    if not logo_path:
+        return
+    path = Path(str(logo_path)).expanduser()
+    if not path.exists():
+        return
+    try:
+        logo = Image.open(path).convert("RGBA")
+    except OSError:
+        return
+    logo.thumbnail((size, size), Image.LANCZOS)
+    left = x + (size - logo.width) // 2
+    top = y + (size - logo.height) // 2
+    image.alpha_composite(logo, (left, top))
 
 
 def _score_overlay(match: dict[str, Any], teams: list[dict[str, Any]]) -> Optional[dict[str, Any]]:

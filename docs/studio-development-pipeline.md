@@ -45,6 +45,7 @@ The command writes:
 - `runs/<episode_slug>/banny-info.json` when Banny CLI integration is enabled
 - `runs/<episode_slug>/preview-*.png` for configured Banny preview frames
 - `outputs/<episode_slug>.mp4` when `banny_ship` is enabled
+- `runs/<episode_slug>/youtube-upload.json` when YouTube upload is enabled
 
 If `runs/<episode_slug>/script.json` already exists, the pipeline stops before redrafting unless `overwrite_script` is set to `true`.
 
@@ -124,13 +125,15 @@ After audio is generated, prefer Banny Studio for visual touch-ups and `retime-m
 |---|---|---|
 | Feed URL | `src/split_peel/feed.py` | `runs/<episode_slug>/feed.json` |
 | ESPN league and scoreboard URL | `src/split_peel/espn.py` | `runs/<episode_slug>/scoreboard.json` |
-| Match normalization and key moments | `src/split_peel/espn.py` | `runs/<episode_slug>/match_context.json` |
+| Match normalization, full ESPN slate, and key moments | `src/split_peel/espn.py` | `runs/<episode_slug>/match_context.json` |
 | Show name, tagline, episode rules, preroll, outro effect | `src/split_peel/scriptwriter.py` | `runs/<episode_slug>/script.json` |
 | Season voice/style instructions | `prompts/final-whistle-season.txt` | `runs/<episode_slug>/script.json` |
 | Character voices and appearance | `characters/default.json` | `outputs/<episode_slug>.bs` |
 | Stadium/title/default overlay manifest | `examples/overlays.final-whistle-gantry.json` | `runs/<episode_slug>/espn-overlays.json` and `runs/<episode_slug>/pfp-overlays.json` |
 | Hosted voice provider | `src/split_peel/audio.py` plus `.env` | `audio/*.wav` inside the `.bs` package |
 | Mouth/eye/motion events | `src/split_peel/audio.py` and `src/split_peel/motion.py` | `stage.characters[].events[]` inside `show.json` |
+
+For `game-week-preview`, `match_context.json` contains a selected `match` plus the full ESPN `matches[]` slate. Preview overlays should come from `matches[]`: up to five fixtures per slate PNG, at most two slate pages, with logo-v-logo rows and kickoff times in UTC. Match-event and recap episodes continue to use the selected `match` for the corner logos, score, and key-moment graphics.
 
 ## Banny CLI Validation And Render
 
@@ -169,6 +172,58 @@ banny ship outputs/<episode_slug>.bs outputs/<episode_slug>.mp4 --720
 ```
 
 Validation errors stop the pipeline. Preview frames and exported movies are added to the manifest and QA checklist.
+
+## YouTube Upload
+
+The pipeline can upload the finished MP4 as an explicit final delivery step. This is opt-in and runs only after `output_movie` exists.
+
+Standalone upload command:
+
+```bash
+split-peel upload-youtube \
+  --file outputs/<episode_slug>.mp4 \
+  --title "Final Whistle: ENG1 Game Week Preview" \
+  --description-file runs/<episode_slug>/youtube-description.md \
+  --tags "football,final whistle,premier league" \
+  --category-id 17 \
+  --privacy-status private \
+  --credentials .secrets/youtube-client.json \
+  --token .secrets/youtube-token.json \
+  --thumbnail runs/<episode_slug>/thumbnail.png \
+  --out runs/<episode_slug>/youtube-upload.json
+```
+
+Use `--dry-run` to validate the file path and print/write the upload request without authenticating or uploading.
+
+Pipeline config fields:
+
+```json
+{
+  "youtube_upload_enabled": false,
+  "youtube_credentials": null,
+  "youtube_token": ".secrets/youtube-token.json",
+  "youtube_title": null,
+  "youtube_description": null,
+  "youtube_description_file": null,
+  "youtube_tags": ["football", "final whistle"],
+  "youtube_category_id": "17",
+  "youtube_privacy_status": "private",
+  "youtube_notify_subscribers": false,
+  "youtube_made_for_kids": false,
+  "youtube_contains_synthetic_media": null,
+  "youtube_thumbnail": null
+}
+```
+
+When `youtube_title` is omitted, the pipeline uses the script title, then `episode_title`, then `episode_slug`. When no description or description file is configured, it generates a short description from the script title, tagline, and script beats. YouTube does not require a custom thumbnail during upload, so thumbnail generation remains separate; set `youtube_thumbnail` or `--thumbnail` when a reviewed image is ready.
+
+The upload command uses YouTube Data API OAuth with the `youtube.upload` scope. Install the optional dependencies before first use:
+
+```bash
+pip install 'split-peel[youtube]'
+```
+
+Keep the first upload private. YouTube may force uploads from newer unverified API projects to private until the project passes Google's audit process.
 
 ## Hubs Review Loop
 
