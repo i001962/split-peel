@@ -1,4 +1,5 @@
 import json
+import re
 
 from split_peel.scriptwriter import draft_script
 
@@ -19,9 +20,12 @@ def test_draft_script_returns_structured_dialogue():
     script = draft_script(feed)
 
     assert script["title"] == "Spain Win, Farcaster Loses Its Mind"
+    assert script["showName"] == "Final Whistle with Split & Peel"
+    assert script["tagline"] == "The whistle goes, the takes stay loud."
+    assert script["preroll"]["durationSec"] == 8
     assert script["dialogue"]
     assert {"speaker", "line", "tone", "start"} <= set(script["dialogue"][0])
-    assert script["dialogue"][0]["line"].startswith("Welcome to Match Replies.")
+    assert script["dialogue"][0]["line"].startswith("Welcome to Final Whistle with Split & Peel.")
     assert "I'm Split" in script["dialogue"][0]["line"]
     assert "Peel" in script["dialogue"][0]["line"]
     assert "subscribe" in script["dialogue"][-1]["line"].lower() or "replies" in script["dialogue"][-1]["line"].lower()
@@ -164,6 +168,92 @@ def test_draft_script_uses_instructions_and_memory():
     assert all("Previous Banter" not in line["line"] for line in script["dialogue"])
 
 
+def test_draft_script_accepts_final_whistle_episode_metadata():
+    script = draft_script(
+        {"casts": []},
+        episode_title="ENG1 Game Week 01 Preview",
+        episode_type="game-week-preview",
+        tagline="Every fixture gets a verdict before the group chat does.",
+    )
+
+    assert script["title"] == "ENG1 Game Week 01 Preview"
+    assert script["episodeType"] == "game-week-preview"
+    assert script["preroll"]["voiceover"] == (
+        "Final Whistle with Split & Peel. Every fixture gets a verdict before the group chat does."
+    )
+    assert "ENG1 Game Week 01 Preview" in script["dialogue"][0]["line"]
+
+
+def test_draft_script_accepts_outtake_episode_metadata_and_cold_open():
+    script = draft_script(
+        {"casts": []},
+        episode_title="ENG1 Hot Mic",
+        episode_type="outtake",
+        match_context={
+            "match": {
+                "shortName": "ARS @ PSG",
+                "status": {"description": "Final"},
+                "teams": [
+                    {"name": "Arsenal", "abbreviation": "ARS"},
+                    {"name": "Paris Saint-Germain", "abbreviation": "PSG"},
+                ],
+            }
+        },
+    )
+
+    spoken = " ".join(line["line"] for line in script["dialogue"]).lower()
+    assert script["episodeType"] == "outtake"
+    assert script["preroll"]["type"] == "cold-open"
+    assert script["preroll"]["voiceover"] == ""
+    assert script["outroEffect"]["type"] == "static-disconnect"
+    assert script["outroEffect"]["enabled"] is True
+    assert not script["dialogue"][0]["line"].startswith("Welcome to")
+    assert "subscribe" not in spoken
+    assert "arsenal" in spoken
+    assert "paris saint-germain" in spoken
+    assert "ARS" not in " ".join(line["line"] for line in script["dialogue"])
+    assert "PSG" not in " ".join(line["line"] for line in script["dialogue"])
+
+
+def test_draft_script_turns_key_moments_into_announcer_banter():
+    feed = {"casts": []}
+    match_context = {
+        "match": {
+            "shortName": "ARS @ PSG",
+            "status": {"state": "post", "description": "Final"},
+            "venue": {"name": "Parc des Princes"},
+            "teams": [
+                {"name": "Arsenal", "abbreviation": "ARS", "score": "1"},
+                {"name": "Paris Saint-Germain", "abbreviation": "PSG", "score": "1"},
+            ],
+            "keyMoments": [
+                {"clock": "6'", "type": "Goal", "text": "K. Havertz: Goal", "team": "ARS", "score": 1},
+                {
+                    "clock": "65'",
+                    "type": "Penalty - Scored",
+                    "text": "O. Dembélé: Penalty - Scored",
+                    "team": "PSG",
+                    "score": 1,
+                },
+                {"clock": "118'", "type": "Yellow Card", "text": "M. Merino: Yellow Card", "team": "ARS"},
+            ],
+        }
+    }
+
+    script = draft_script(feed, match_context=match_context, instructions="Do not reference Farcaster.")
+    spoken = " ".join(line["line"] for line in script["dialogue"])
+
+    assert "6'" in spoken
+    assert "K. Havertz: Goal" in spoken
+    assert "65'" in spoken
+    assert "O. Dembélé: Penalty - Scored" in spoken
+    assert "Key match moments:" in " ".join(script["beats"])
+    assert "ARS" not in spoken
+    assert "PSG" not in spoken
+    assert "Arsenal" in spoken
+    assert "Paris Saint-Germain" in spoken
+
+
 def test_espn_only_instructions_do_not_leak_prompt_or_social_references():
     feed = {"casts": []}
     match_context = {
@@ -199,6 +289,10 @@ def test_espn_only_instructions_do_not_leak_prompt_or_social_references():
     assert "timeline" not in spoken
     assert "arsenal" in spoken
     assert "coventry" in spoken
+    assert not re.search(r"(?<![a-z])fri\.?(?![a-z])", spoken)
+    assert "friday" in spoken
+    assert not re.search(r"(?<![a-z0-9])ars(?![a-z0-9])", spoken)
+    assert not re.search(r"(?<![a-z0-9])cov(?![a-z0-9])", spoken)
 
 
 def test_espn_only_match_scripts_vary_by_fixture_identity():
@@ -312,8 +406,84 @@ def test_openai_script_provider_generates_structured_dialogue(monkeypatch):
     assert "Do not reference Farcaster" in captured["body"]["input"][1]["content"]
     assert "voice-performance direction" in captured["body"]["input"][1]["content"]
     assert "Do not write a show welcome" in captured["body"]["input"][1]["content"]
+    assert "matchContext.match.keyMoments" in captured["body"]["input"][1]["content"]
     assert [line["speaker"] for line in script["dialogue"]] == ["split", "split", "peel", "peel"]
     assert script["dialogue"][0]["line"].startswith("Welcome to")
     assert "tiny siren" in script["dialogue"][1]["line"]
     assert "delighted alarm" in script["dialogue"][1]["tone"]
     assert "subscribe" in script["dialogue"][-1]["line"].lower() or "replies" in script["dialogue"][-1]["line"].lower()
+
+
+def test_openai_script_provider_sanitizes_team_and_weekday_abbreviations(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "output": [
+                        {
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": json.dumps(
+                                        {
+                                            "dialogue": [
+                                                {
+                                                    "speaker": "split",
+                                                    "line": "ARS got the early goal on Fri and PSG answered late.",
+                                                    "tone": "fast recap with delighted disbelief",
+                                                },
+                                                {
+                                                    "speaker": "peel",
+                                                    "line": "PSG made ARS defend like the whiteboard owed them money.",
+                                                    "tone": "mock-serious, quick turn into a grin",
+                                                },
+                                            ]
+                                        }
+                                    ),
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("split_peel.scriptwriter.urllib.request.urlopen", fake_urlopen)
+
+    script = draft_script(
+        {"casts": []},
+        match_context={
+            "match": {
+                "shortName": "ARS @ PSG",
+                "status": {"detail": "Fri, August 21st at 3:00 PM EDT"},
+                "teams": [
+                    {"name": "Arsenal", "abbreviation": "ARS"},
+                    {"name": "Paris Saint-Germain", "abbreviation": "PSG"},
+                ],
+            }
+        },
+        characters={
+            "characters": [
+                {"id": "split", "displayName": "Split"},
+                {"id": "peel", "displayName": "Peel"},
+            ]
+        },
+        script_provider="openai",
+    )
+
+    spoken = " ".join(line["line"] for line in script["dialogue"])
+    assert "ARS" not in spoken
+    assert "PSG" not in spoken
+    assert not re.search(r"(?<![A-Za-z])Fri\.?(?![A-Za-z])", spoken)
+    assert "Arsenal" in spoken
+    assert "Paris Saint-Germain" in spoken
+    assert "Friday" in spoken

@@ -18,7 +18,7 @@ from split_peel.espn import (
 )
 from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
-from split_peel.overlays import build_pfp_overlays, load_overlay_manifest
+from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
 from split_peel.scriptwriter import draft_script
 
@@ -36,6 +36,10 @@ class PipelineConfig:
     output_bannyshow: Path
     output_movie: Path
     duration_sec: int = 60
+    episode_title: Optional[str] = None
+    episode_type: str = "match-event"
+    show_name: str = "Final Whistle with Split & Peel"
+    tagline: str = "The whistle goes, the takes stay loud."
     background_gain: Optional[float] = None
     feed_url: str = DEFAULT_FOOTBALL_FEED_URL
     no_feed: bool = False
@@ -51,6 +55,9 @@ class PipelineConfig:
     memory_dir: Path = DEFAULT_MEMORY_DIR
     no_memory: bool = False
     overwrite_script: bool = False
+    draft_only: bool = False
+    reuse_audio_from: Optional[Path] = None
+    skip_voice: bool = False
     banny_enabled: bool = False
     banny_bin: Optional[Path] = None
     banny_checkout_path: Optional[Path] = None
@@ -77,6 +84,10 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         output_bannyshow=output_bannyshow,
         output_movie=output_movie,
         duration_sec=int(payload.get("duration_sec") or 60),
+        episode_title=payload.get("episode_title"),
+        episode_type=str(payload.get("episode_type") or "match-event"),
+        show_name=str(payload.get("show_name") or "Final Whistle with Split & Peel"),
+        tagline=str(payload.get("tagline") or "The whistle goes, the takes stay loud."),
         background_gain=_optional_float(payload.get("background_gain")),
         feed_url=str(payload.get("feed_url") or DEFAULT_FOOTBALL_FEED_URL),
         no_feed=bool(payload.get("no_feed", False)),
@@ -92,6 +103,9 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         memory_dir=_path(payload.get("memory_dir") or DEFAULT_MEMORY_DIR, base_dir),
         no_memory=bool(payload.get("no_memory", False)),
         overwrite_script=bool(payload.get("overwrite_script", False)),
+        draft_only=bool(payload.get("draft_only", False) or payload.get("no_build", False)),
+        reuse_audio_from=_optional_path(payload.get("reuse_audio_from"), base_dir),
+        skip_voice=bool(payload.get("skip_voice", False)),
         banny_enabled=bool(payload.get("banny_enabled", False)),
         banny_bin=_optional_path(payload.get("banny_bin"), base_dir),
         banny_checkout_path=_optional_path(payload.get("banny_checkout_path"), base_dir),
@@ -110,6 +124,10 @@ def write_pipeline_config_template(path: Path) -> None:
         "output_bannyshow": "outputs/pipeline-smoke.bannyshow",
         "output_movie": "outputs/pipeline-smoke.mp4",
         "duration_sec": 60,
+        "episode_title": "ENG1 Matchday Preview",
+        "episode_type": "game-week-preview",
+        "show_name": "Final Whistle with Split & Peel",
+        "tagline": "The whistle goes, the takes stay loud.",
         "background_gain": 0.22,
         "feed_url": DEFAULT_FOOTBALL_FEED_URL,
         "no_feed": False,
@@ -124,6 +142,9 @@ def write_pipeline_config_template(path: Path) -> None:
         "memory_dir": str(DEFAULT_MEMORY_DIR),
         "no_memory": False,
         "overwrite_script": False,
+        "draft_only": False,
+        "reuse_audio_from": None,
+        "skip_voice": False,
         "banny_enabled": True,
         "banny_bin": None,
         "banny_checkout_path": None,
@@ -172,21 +193,25 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         "episode_slug": config.episode_slug,
         "template_path": str(config.template_path),
         "duration_sec": config.duration_sec,
+        "episode_title": config.episode_title,
+        "episode_type": config.episode_type,
+        "show_name": config.show_name,
+        "tagline": config.tagline,
         "background_gain": config.background_gain,
         "feed_url": config.feed_url,
         "no_feed": config.no_feed,
         "espn_league": None if config.no_espn else config.espn_league,
         "overwrite_script": config.overwrite_script,
+        "draft_only": config.draft_only,
+        "reuse_audio_from": str(config.reuse_audio_from) if config.reuse_audio_from else None,
+        "skip_voice": config.skip_voice,
         "stages": [
             "inspect-template",
             "write-empty-feed" if config.no_feed else "fetch-feed",
             *([] if config.no_espn else ["fetch-scoreboard", "normalize-match-context", "build-espn-overlays"]),
             "draft-script",
-            "build-show",
-            "unpack",
-            *(_banny_stages(config)),
-            "write-movie-export-handoff",
-            "write-studio-qa-checklist",
+            *([] if config.draft_only else ["build-show", "unpack", *_banny_stages(config)]),
+            *([] if config.draft_only else ["write-movie-export-handoff", "write-studio-qa-checklist"]),
             "write-pipeline-manifest",
         ],
         "artifacts": artifacts,
@@ -236,14 +261,40 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         episode_memory=memory,
         instructions=_instructions(config.instructions, config.instructions_file),
         script_provider=config.script_provider,
+        episode_title=config.episode_title,
+        episode_type=config.episode_type,
+        show_name=config.show_name,
+        tagline=config.tagline,
     )
     write_json(script_path, script)
 
     pfp_overlays = build_pfp_overlays(script, config.run_dir / "pfp-assets")
-    if (pfp_overlays.get("overlays") or []) or overlays_path:
+    key_moment_overlays = build_key_moment_takeover_overlays(script, config.run_dir / "key-moment-assets")
+    generated_overlay_count = len(pfp_overlays.get("overlays") or []) + len(key_moment_overlays.get("overlays") or [])
+    if generated_overlay_count or overlays_path:
         pfp_overlays_path = config.run_dir / "pfp-overlays.json"
-        write_json(pfp_overlays_path, _merge_overlay_dicts(load_overlay_manifest(overlays_path), pfp_overlays))
+        write_json(
+            pfp_overlays_path,
+            _merge_overlay_dicts(
+                load_overlay_manifest(overlays_path),
+                _merge_overlay_dicts(pfp_overlays.get("overlays") or [], key_moment_overlays),
+            ),
+        )
         overlays_path = pfp_overlays_path
+
+    if config.draft_only:
+        manifest = {
+            **plan,
+            "template_inspection": template_inspection,
+            "memory_path": None,
+            "final_overlays": str(overlays_path) if overlays_path else None,
+            "movie_export_path": str(config.output_movie),
+            "banny": None,
+            "delivery_status": "draft-ready",
+            "status": "ready-for-script-review",
+        }
+        write_json(config.run_dir / "pipeline-manifest.json", manifest)
+        return manifest
 
     memory_path = None if config.no_memory else save_episode_memory(script, config.memory_dir)
     build_show(
@@ -253,6 +304,8 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         background_gain=config.background_gain,
         overlays=overlays_path,
         characters=characters,
+        reuse_audio_from=config.reuse_audio_from,
+        skip_voice=config.skip_voice,
     )
     banny_result = run_banny_post_build(config) if config.banny_enabled else None
     unpack_package(config.output_bs, config.output_bannyshow, overwrite=True)

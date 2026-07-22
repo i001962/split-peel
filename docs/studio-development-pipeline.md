@@ -11,6 +11,8 @@ split-peel studio-pipeline --init-config --config runs/pipeline-smoke/pipeline.j
 Edit the generated JSON with the episode slug, template path, target outputs, instructions, overlays, and ESPN settings.
 Keep `overwrite_script` set to `false` when you plan to manually edit `runs/<episode_slug>/script.json`.
 
+The pipeline is intended to support both one-command automation and a manual review loop. Use the full pipeline for repeatable production builds. Use the draft/edit/build split when writers or producers need to review jokes, tone, team context, or visual overlays before paying for hosted voice generation.
+
 ## Preview The Plan
 
 ```bash
@@ -73,6 +75,62 @@ split-peel build-show \
 ```
 
 Only pass `--overwrite-script` to `draft-script` or `make` when replacing a manually edited script is intentional.
+
+## Audio Cost Boundary
+
+The expensive boundary is package building, not script drafting:
+
+```text
+draft-script   -> writes JSON only, no voice provider call
+build-show     -> synthesizes dialogue audio and rewrites show.json
+make           -> drafts script and then calls build-show
+studio-pipeline -> calls build-show unless run with --dry-run
+retime-mouth   -> reuses existing WAV files, no voice provider call
+```
+
+Use these controls during iteration:
+
+```bash
+split-peel make ... --draft-only
+split-peel build-show ... --reuse-audio-from outputs/<episode>.bs
+split-peel build-show ... --reuse-audio-from outputs/<episode>.bs --skip-voice
+```
+
+Pipeline config fields:
+
+```json
+{
+  "draft_only": false,
+  "reuse_audio_from": null,
+  "skip_voice": false
+}
+```
+
+With the default ElevenLabs provider, each uncached dialogue line becomes a hosted TTS request. Rerunning `build-show`, `make`, or a non-dry-run `studio-pipeline` can regenerate lines unless they are found in `.cache/split-peel/audio/` or in `reuse_audio_from`. Before crossing that boundary, confirm:
+
+- `runs/<episode_slug>/script.json` has the final spoken lines.
+- Team names and weekdays are spoken in full.
+- Episode type is correct: `game-week-preview`, `match-event`, `recap`, `general`, or `outtake`.
+- Overlay manifests point at the intended background, title card, logos, and generated panels.
+- Outtake builds should not include the normal title lockup or polished welcome/signoff.
+
+After audio is generated, prefer Banny Studio for visual touch-ups and `retime-mouth` for timing repairs. Only rebuild with hosted TTS when spoken dialogue, tone direction, speaker assignment, or character voice settings change.
+
+`skip_voice` is intentionally strict: if a line cannot be found in the cache or reuse package, the build fails rather than calling the provider.
+
+## Default Sources
+
+| Concern | Default Source | Generated Output |
+|---|---|---|
+| Feed URL | `src/split_peel/feed.py` | `runs/<episode_slug>/feed.json` |
+| ESPN league and scoreboard URL | `src/split_peel/espn.py` | `runs/<episode_slug>/scoreboard.json` |
+| Match normalization and key moments | `src/split_peel/espn.py` | `runs/<episode_slug>/match_context.json` |
+| Show name, tagline, episode rules, preroll, outro effect | `src/split_peel/scriptwriter.py` | `runs/<episode_slug>/script.json` |
+| Season voice/style instructions | `prompts/final-whistle-season.txt` | `runs/<episode_slug>/script.json` |
+| Character voices and appearance | `characters/default.json` | `outputs/<episode_slug>.bs` |
+| Stadium/title/default overlay manifest | `examples/overlays.final-whistle-gantry.json` | `runs/<episode_slug>/espn-overlays.json` and `runs/<episode_slug>/pfp-overlays.json` |
+| Hosted voice provider | `src/split_peel/audio.py` plus `.env` | `audio/*.wav` inside the `.bs` package |
+| Mouth/eye/motion events | `src/split_peel/audio.py` and `src/split_peel/motion.py` | `stage.characters[].events[]` inside `show.json` |
 
 ## Banny CLI Validation And Render
 

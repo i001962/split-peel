@@ -28,6 +28,9 @@ def test_load_pipeline_config_resolves_relative_paths_from_cwd(tmp_path: Path, m
                 "background_gain": 0.18,
                 "no_espn": True,
                 "instructions": "Keep it tight.",
+                "draft_only": True,
+                "reuse_audio_from": "outputs/previous.bs",
+                "skip_voice": True,
             }
         ),
         encoding="utf-8",
@@ -46,6 +49,9 @@ def test_load_pipeline_config_resolves_relative_paths_from_cwd(tmp_path: Path, m
     assert config.no_feed is False
     assert config.no_espn is True
     assert config.overwrite_script is False
+    assert config.draft_only is True
+    assert config.reuse_audio_from == tmp_path / "outputs/previous.bs"
+    assert config.skip_voice is True
     assert config.banny_enabled is False
 
 
@@ -127,6 +133,30 @@ def test_build_pipeline_plan_uses_empty_feed_stage_when_no_feed(tmp_path: Path, 
 
     assert "write-empty-feed" in plan["stages"]
     assert "fetch-feed" not in plan["stages"]
+
+
+def test_build_pipeline_plan_skips_package_stages_when_draft_only(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "pipeline.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "episode_slug": "demo",
+                "template_path": "templates/base.bs",
+                "draft_only": True,
+                "banny_enabled": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = load_pipeline_config(config_path)
+
+    plan = build_pipeline_plan(config)
+
+    assert "draft-script" in plan["stages"]
+    assert "build-show" not in plan["stages"]
+    assert "unpack" not in plan["stages"]
+    assert "banny-validate" not in plan["stages"]
 
 
 def test_run_banny_post_build_writes_validation_preview_and_movie(tmp_path: Path, monkeypatch):

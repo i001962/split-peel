@@ -29,6 +29,14 @@ def test_normalize_scoreboard_extracts_featured_match():
                 "venue": {"displayName": "Emirates Stadium"},
                 "competitions": [
                     {
+                        "details": [
+                            {
+                                "clock": "12'",
+                                "type": {"text": "Goal"},
+                                "text": "Bukayo Saka scores",
+                                "team": {"displayName": "Arsenal"},
+                            }
+                        ],
                         "competitors": [
                             {
                                 "homeAway": "home",
@@ -67,6 +75,66 @@ def test_normalize_scoreboard_extracts_featured_match():
     assert context["match"]["shortName"] == "COV @ ARS"
     assert context["match"]["venue"]["name"] == "Emirates Stadium"
     assert context["match"]["teams"][0]["abbreviation"] == "ARS"
+    assert context["match"]["keyMoments"][0]["text"] == "Bukayo Saka scores"
+    assert context["match"]["keyMoments"][0]["team"] == "Arsenal"
+
+
+def test_normalize_scoreboard_flattens_espn_soccer_detail_objects():
+    scoreboard = {
+        "leagues": [{"id": "2", "name": "UEFA Champions League", "abbreviation": "UCL"}],
+        "events": [
+            {
+                "id": "1",
+                "date": "2026-07-22T19:00Z",
+                "name": "Arsenal at Paris Saint-Germain",
+                "shortName": "ARS @ PSG",
+                "status": {"type": {"state": "post", "description": "Final"}},
+                "competitions": [
+                    {
+                        "details": [
+                            {
+                                "type": {"id": "70", "text": "Goal"},
+                                "clock": {"value": 302.0, "displayValue": "6'"},
+                                "team": {"id": "359"},
+                                "scoreValue": 1,
+                                "athletesInvolved": [{"shortName": "K. Havertz"}],
+                            },
+                            {
+                                "type": {"id": "94", "text": "Yellow Card"},
+                                "clock": {"value": 2760.0, "displayValue": "46'"},
+                                "team": {"id": "160"},
+                                "scoreValue": 0,
+                                "athletesInvolved": [{"displayName": "Ousmane Dembélé"}],
+                            },
+                        ],
+                        "competitors": [
+                            {
+                                "homeAway": "away",
+                                "team": {"id": "359", "displayName": "Arsenal", "abbreviation": "ARS"},
+                            },
+                            {
+                                "homeAway": "home",
+                                "team": {"id": "160", "displayName": "Paris Saint-Germain", "abbreviation": "PSG"},
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    context = normalize_scoreboard(scoreboard)
+
+    assert context["match"]["keyMoments"] == [
+        {"clock": "6'", "type": "Goal", "text": "K. Havertz: Goal", "team": "ARS", "score": 1},
+        {
+            "clock": "46'",
+            "type": "Yellow Card",
+            "text": "Ousmane Dembélé: Yellow Card",
+            "team": "PSG",
+            "score": None,
+        },
+    ]
 
 
 def test_normalize_scoreboard_selects_explicit_match_id():
@@ -186,3 +254,29 @@ def test_build_scoreboard_overlays_adds_final_score_for_completed_match(tmp_path
     assert score_overlay["y"] == 0.14
     assert score_overlay["file"] == str(tmp_path / "score-overlay.png")
     assert (tmp_path / "score-overlay.png").exists()
+
+
+def test_build_scoreboard_overlays_adds_key_moments_center_panel(tmp_path):
+    home_logo = tmp_path / "ars-logo.png"
+    away_logo = tmp_path / "cov-logo.png"
+    home_logo.write_bytes(b"fake")
+    away_logo.write_bytes(b"fake")
+    context = {
+        "match": {
+            "shortName": "COV @ ARS",
+            "keyMoments": [{"clock": "78'", "text": "Winner from distance", "team": "Arsenal"}],
+            "teams": [
+                {"homeAway": "home", "abbreviation": "ARS", "name": "Arsenal", "localLogo": str(home_logo)},
+                {"homeAway": "away", "abbreviation": "COV", "name": "Coventry", "localLogo": str(away_logo)},
+            ],
+        }
+    }
+
+    manifest = build_scoreboard_overlays(context)
+
+    moments_overlay = manifest["overlays"][2]
+    assert moments_overlay["name"] == "key moments"
+    assert moments_overlay["x"] == 0.5
+    assert moments_overlay["y"] == 0.31
+    assert moments_overlay["file"] == str(tmp_path / "key-moments-overlay.png")
+    assert (tmp_path / "key-moments-overlay.png").exists()

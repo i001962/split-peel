@@ -8,7 +8,7 @@ import subprocess
 import urllib.error
 import urllib.request
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
@@ -52,6 +52,7 @@ class VoiceClip:
     start: float
     duration: float
     mouth_events: list[dict[str, object]]
+    eye_events: list[dict[str, object]] = field(default_factory=list)
 
 
 def local_tts_available() -> bool:
@@ -63,12 +64,17 @@ def synthesize_dialogue(
     audio_dir: Path,
     start_at: float = 0.5,
     characters: Optional[dict] = None,
+    reuse_audio_dirs: Optional[list[Path]] = None,
+    cache_dir: Optional[Path] = None,
+    skip_voice: bool = False,
 ) -> list[VoiceClip]:
     audio_dir.mkdir(parents=True, exist_ok=True)
     clips: list[VoiceClip] = []
     cursor = start_at
-    provider = os.environ.get("SPLIT_PEEL_VOICE_PROVIDER", "local").strip().lower()
+    provider = os.environ.get("SPLIT_PEEL_VOICE_PROVIDER", "elevenlabs").strip().lower()
     characters = characters or DEFAULT_CHARACTERS
+    reuse_audio_dirs = reuse_audio_dirs or []
+    cache_dir = _audio_cache_dir(cache_dir)
 
     for index, line in enumerate(dialogue):
         speaker = str(line.get("speaker") or "split").lower()
@@ -79,18 +85,28 @@ def synthesize_dialogue(
 
         clip_id = make_id(f"{index:03d}-{speaker}-{text}-{tone}")
         output_wav = audio_dir / f"{clip_id}.wav"
-
-        if provider == "openai":
+        cache_wav = cache_dir / f"{_audio_cache_id(provider, speaker, text, tone, characters)}.wav" if cache_dir else None
+        if _copy_reusable_audio(output_wav, clip_id, reuse_audio_dirs, cache_wav):
+            pass
+        elif skip_voice:
+            raise RuntimeError(
+                f"voice generation skipped but no reusable audio was found for line {index + 1}: {speaker} {text!r}"
+            )
+        elif provider == "openai":
             _synthesize_openai_tts(speaker, text, output_wav, characters, tone=tone)
+            _store_audio_cache(output_wav, cache_wav)
         elif provider == "elevenlabs":
             _synthesize_elevenlabs_tts(speaker, text, output_wav, characters, tone=tone)
+            _store_audio_cache(output_wav, cache_wav)
         elif provider in {"local", "say"}:
             _synthesize_local_tts(speaker, text, output_wav, characters)
+            _store_audio_cache(output_wav, cache_wav)
         else:
             raise RuntimeError(f"unknown voice provider: {provider}")
 
         duration = wav_duration(output_wav)
         mouth_events = detect_mouth_events(output_wav, offset=cursor)
+        eye_events = detect_eye_events(output_wav, offset=cursor, tone=tone)
 
         clips.append(
             VoiceClip(
@@ -100,11 +116,75 @@ def synthesize_dialogue(
                 start=round(cursor, 3),
                 duration=round(duration, 3),
                 mouth_events=mouth_events,
+                eye_events=eye_events,
             )
         )
         cursor += duration + 0.35
 
     return clips
+
+
+def _audio_cache_dir(cache_dir: Optional[Path]) -> Optional[Path]:
+    if os.environ.get("SPLIT_PEEL_AUDIO_CACHE", "").strip().lower() in {"0", "false", "off", "no"}:
+        return None
+    raw = cache_dir or Path(os.environ.get("SPLIT_PEEL_AUDIO_CACHE_DIR", ".cache/split-peel/audio"))
+    path = Path(raw).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _copy_reusable_audio(output_wav: Path, clip_id: str, reuse_audio_dirs: list[Path], cache_wav: Optional[Path]) -> bool:
+    if output_wav.exists():
+        return True
+    for audio_dir in reuse_audio_dirs:
+        candidate = Path(audio_dir) / f"{clip_id}.wav"
+        if candidate.exists():
+            shutil.copy2(candidate, output_wav)
+            return True
+    if cache_wav and cache_wav.exists():
+        shutil.copy2(cache_wav, output_wav)
+        return True
+    return False
+
+
+def _store_audio_cache(output_wav: Path, cache_wav: Optional[Path]) -> None:
+    if not cache_wav or not output_wav.exists():
+        return
+    cache_wav.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(output_wav, cache_wav)
+
+
+def _audio_cache_id(provider: str, speaker: str, text: str, tone: str, characters: dict) -> str:
+    identity = _voice_cache_identity(provider, speaker, characters)
+    return make_id(json.dumps(
+        {
+            "provider": provider,
+            "speaker": speaker,
+            "text": text,
+            "tone": tone,
+            "voice": identity,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    ))
+
+
+def _voice_cache_identity(provider: str, speaker: str, characters: dict) -> dict[str, object]:
+    if provider == "openai":
+        return {
+            "model": os.environ.get("SPLIT_PEEL_OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+            "voice": _openai_voice_for_speaker(speaker, characters),
+            "speed": _openai_speed_for_speaker(speaker, characters),
+        }
+    if provider == "elevenlabs":
+        return {
+            "model": os.environ.get("SPLIT_PEEL_ELEVENLABS_MODEL", "eleven_v3"),
+            "outputFormat": os.environ.get("SPLIT_PEEL_ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128"),
+            "voice": _elevenlabs_voice_for_speaker(speaker, characters),
+        }
+    if provider in {"local", "say"}:
+        return {"voice": voice_for_speaker(characters, speaker, "local", VOICE_BY_SPEAKER.get(speaker, "Alex"))}
+    return {}
 
 
 def _synthesize_local_tts(speaker: str, text: str, output_wav: Path, characters: dict) -> None:
@@ -336,6 +416,87 @@ def detect_mouth_events(path: Path, offset: float = 0.0, window_sec: float = 0.0
         events.append({"code": "KeyM", "down": False, "t": round(close_t, 3)})
 
     return _remove_tiny_mouth_flaps(events, min_duration=min(0.06, max_open_sec * 0.5))
+
+
+def detect_eye_events(path: Path, offset: float = 0.0, tone: str = "", window_sec: float = 0.08) -> list[dict[str, object]]:
+    if os.environ.get("SPLIT_PEEL_EYES_ENABLED", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return []
+
+    with wave.open(str(path), "rb") as wav:
+        if wav.getsampwidth() != 2:
+            raise RuntimeError("eye detection expects 16-bit PCM WAV audio")
+        channels = wav.getnchannels()
+        sample_rate = wav.getframerate()
+        frames = wav.readframes(wav.getnframes())
+
+    samples = _pcm16_samples(frames, channels)
+    duration = len(samples) / float(sample_rate) if sample_rate else 0.0
+    if duration <= 0:
+        return []
+
+    window_size = max(1, int(sample_rate * window_sec))
+    levels: list[float] = []
+    for start in range(0, len(samples), window_size):
+        window = samples[start : start + window_size]
+        if not window:
+            continue
+        rms = math.sqrt(sum(sample * sample for sample in window) / len(window))
+        levels.append(rms)
+
+    if not levels:
+        return []
+
+    levels = _smooth_levels(levels)
+    events: list[dict[str, object]] = []
+    reserved: list[tuple[float, float]] = []
+
+    def add_eye(code: str, start: float, dur: float) -> bool:
+        start = max(offset, min(offset + duration - 0.05, start))
+        end = start + dur
+        if any(start < blocked_end and end > blocked_start for blocked_start, blocked_end in reserved):
+            return False
+        reserved.append((start - 0.12, end + 0.16))
+        events.append({"code": code, "down": True, "t": round(start, 3)})
+        events.append({"code": code, "down": False, "t": round(end, 3)})
+        return True
+
+    peak = max(levels)
+    quiet_threshold = _percentile(levels, 0.32)
+    loud_threshold = max(_percentile(levels, 0.82), peak * 0.62)
+    surprise_tone = any(word in tone.lower() for word in ("surprise", "disbelief", "panic", "baffled", "confused", "shock", "relief", "relieved"))
+
+    # Loud peaks get expressive eyes. Slash reads as a lifted/surprised blink;
+    # Period reads as a harder straight squeeze.
+    peak_candidates: list[tuple[float, int]] = []
+    for index in range(1, len(levels) - 1):
+        level = levels[index]
+        if level >= loud_threshold and level >= levels[index - 1] and level >= levels[index + 1]:
+            peak_candidates.append((level, index))
+    max_expression_count = max(2, min(3, int(duration // 4) + 1))
+    for rank, (_, index) in enumerate(sorted(peak_candidates, reverse=True)):
+        if rank >= max_expression_count:
+            break
+        t = offset + index * window_sec
+        code = "Slash" if surprise_tone and rank == 0 else "Period"
+        add_eye(code, t, 0.22 if code == "Period" else 0.26)
+
+    # Natural blinks prefer quiet windows and use Comma, which maps to closed eyes.
+    blink_interval = max(1.5, float(os.environ.get("SPLIT_PEEL_BLINK_RATE_SEC", "3.4")))
+    blink_t = offset + min(1.1, duration * 0.35)
+    while blink_t < offset + duration - 0.18:
+        preferred_index = min(len(levels) - 1, max(0, int(round((blink_t - offset) / window_sec))))
+        search_radius = max(1, int(round(0.48 / window_sec)))
+        best_index = preferred_index
+        best_level = levels[preferred_index]
+        for index in range(max(0, preferred_index - search_radius), min(len(levels), preferred_index + search_radius + 1)):
+            if levels[index] < best_level:
+                best_index = index
+                best_level = levels[index]
+        if best_level <= quiet_threshold or duration > 2.0:
+            add_eye("Comma", offset + best_index * window_sec, 0.14)
+        blink_t += blink_interval
+
+    return sorted(events, key=lambda event: (float(event["t"]), str(event["code"]), not bool(event["down"])))
 
 
 def _pcm16_samples(frames: bytes, channels: int) -> list[int]:

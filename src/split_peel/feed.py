@@ -5,14 +5,21 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+import urllib.parse
+import urllib.error
 from urllib.request import Request, urlopen
 
 
-DEFAULT_FOOTBALL_FEED_URL = (
-    "https://haatz.quilibrium.com/v2/farcaster/feed/parent_urls"
-    "?parent_urls=chain://eip155:1/erc721:0x7abfe142031532e1ad0e46f971cc0ef7cf4b98b0"
-    "&limit=100"
-)
+FOOTBALL_PARENT_URL = "chain://eip155:1/erc721:0x7abfe142031532e1ad0e46f971cc0ef7cf4b98b0"
+
+
+def football_feed_url(limit: int = 100) -> str:
+    query = urllib.parse.urlencode({"parent_urls": FOOTBALL_PARENT_URL, "limit": limit})
+    return f"https://haatz.quilibrium.com/v2/farcaster/feed/parent_urls?{query}"
+
+
+DEFAULT_FOOTBALL_FEED_URL = football_feed_url()
+FALLBACK_FOOTBALL_FEED_URLS = ()
 
 FOOTBALL_TERMS = {
     "argentina",
@@ -47,9 +54,26 @@ class RankedCast:
 
 
 def fetch_feed(url: str = DEFAULT_FOOTBALL_FEED_URL, timeout: int = 30) -> dict[str, Any]:
-    request = Request(url, headers={"User-Agent": "split-peel/0.1"})
-    with urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    urls = [url]
+    if url == DEFAULT_FOOTBALL_FEED_URL:
+        urls.extend(fallback for fallback in FALLBACK_FOOTBALL_FEED_URLS if fallback not in urls)
+
+    last_error: Optional[Exception] = None
+    for candidate in urls:
+        request = Request(candidate, headers={"User-Agent": "split-peel/0.1"})
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            last_error = error
+            if error.code not in {404, 502, 503, 504} or candidate == urls[-1]:
+                raise
+        except urllib.error.URLError as error:
+            last_error = error
+            if candidate == urls[-1]:
+                raise
+
+    raise RuntimeError(f"failed to fetch football feed: {last_error}")
 
 
 def write_json(path: Path, payload: Any) -> None:

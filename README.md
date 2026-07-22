@@ -38,6 +38,37 @@ Farcaster football feed
   -> packaged .bs output
 ```
 
+## Build And Iteration Model
+
+Treat `runs/<episode>/script.json` as the main creative review boundary. Everything before `build-show` is cheap: fetching/caching JSON, normalizing ESPN match context, drafting or hand-editing script lines, and adjusting overlay manifests. Everything that calls `build-show` or the end-to-end `make` command generates dialogue audio and should be treated as an expensive step when `SPLIT_PEEL_VOICE_PROVIDER=elevenlabs`.
+
+Recommended iteration loop:
+
+```text
+1. Fetch/cache context
+   runs/<episode>/feed.json
+   runs/<episode>/scoreboard.json
+   runs/<episode>/match_context.json
+
+2. Draft and review script
+   runs/<episode>/script.json
+
+3. Edit cheap visual inputs
+   examples/*.json
+   runs/<episode>/espn-overlays.json
+   runs/<episode>/pfp-overlays.json
+   runs/<episode>/espn-assets/*
+   runs/<episode>/key-moment-assets/*
+
+4. Lock dialogue, then build once
+   outputs/<episode>.bs
+
+5. Open in Banny Studio for touch-ups
+   outputs/<episode>.bs or outputs/<episode>.bannyshow
+```
+
+Avoid rerunning voiced builds for script, overlay, or layout experiments until the dialogue is ready for voice generation. Use `make --draft-only` to stop after writing `script.json` and overlay manifests. Use `build-show --skip-voice --reuse-audio-from <existing.bs>` for visual-only package rebuilds when the script lines have not changed. If a generated package already has good audio and only mouth timing needs repair, use `retime-mouth`; it reads existing WAV files and does not call a hosted voice provider.
+
 ## CLI
 
 End-to-end local voice command:
@@ -45,7 +76,7 @@ End-to-end local voice command:
 ```bash
 split-peel make \
   --template /path/to/WorldCupAll.bs \
-  --feed-url "https://haatz.quilibrium.com/v2/farcaster/feed/parent_urls?parent_urls=chain://eip155:1/erc721:0x7abfe142031532e1ad0e46f971cc0ef7cf4b98b0&limit=100" \
+  --feed-url "https://haatz.quilibrium.com/v2/farcaster/feed/parent_urls?parent_urls=chain%3A%2F%2Feip155%3A1%2Ferc721%3A0x7abfe142031532e1ad0e46f971cc0ef7cf4b98b0&limit=100" \
   --out outputs/voiced.bs
 ```
 
@@ -67,6 +98,62 @@ split-peel unpack --template outputs/smoke.bs --out outputs/smoke.bannyshow
 split-peel build-show --template templates/WorldCupAll.bs --script runs/latest/script.json --out outputs/episode.bs
 ```
 
+Cheap script-only pass:
+
+```bash
+split-peel fetch-feed --out runs/<episode>/feed.json
+split-peel fetch-scoreboard \
+  --espn-league eng.1 \
+  --out runs/<episode>/scoreboard.json \
+  --match-context-out runs/<episode>/match_context.json
+
+split-peel draft-script \
+  --feed runs/<episode>/feed.json \
+  --match-context runs/<episode>/match_context.json \
+  --out runs/<episode>/script.json \
+  --episode-title "ENG1 Match Preview" \
+  --episode-type match-event \
+  --instructions-file prompts/final-whistle-season.txt
+```
+
+Expensive build pass, only after the script is reviewed:
+
+```bash
+split-peel build-show \
+  --template outputs/openai-voiced.bs \
+  --script runs/<episode>/script.json \
+  --out outputs/<episode>.bs \
+  --overlays runs/<episode>/pfp-overlays.json \
+  --characters characters/default.json
+```
+
+Draft-only end-to-end pass, without package build or voice generation:
+
+```bash
+split-peel make \
+  --template outputs/openai-voiced.bs \
+  --run-dir runs/<episode> \
+  --out outputs/<episode>.bs \
+  --espn-league eng.1 \
+  --episode-title "ENG1 Match Preview" \
+  --episode-type match-event \
+  --overlays examples/overlays.final-whistle-gantry.json \
+  --instructions-file prompts/final-whistle-season.txt \
+  --draft-only
+```
+
+Visual-only rebuild from an existing voiced package:
+
+```bash
+split-peel build-show \
+  --template outputs/<episode>.bs \
+  --script runs/<episode>/script.json \
+  --out outputs/<episode>-visual-pass.bs \
+  --overlays runs/<episode>/pfp-overlays.json \
+  --reuse-audio-from outputs/<episode>.bs \
+  --skip-voice
+```
+
 Add foreground media such as a desk, lower-third, or team logos with an overlay manifest:
 
 ```bash
@@ -82,7 +169,22 @@ split-peel unpack \
   --overwrite
 ```
 
-By default, `split-peel make` also fetches the ESPN Premier League scoreboard, normalizes one featured match, downloads team logos, and generates ESPN logo overlays. Use `--no-espn` to disable that source.
+By default, `split-peel make` also fetches the ESPN Premier League scoreboard, normalizes one featured match, downloads team logos, extracts ESPN key moments when present, and generates ESPN logo/score/key-moment overlays. Use `--no-espn` to disable that source.
+
+Final Whistle season runs can pass reusable episode metadata directly through the CLI:
+
+```bash
+split-peel make \
+  --template /path/to/WorldCupAll.bs \
+  --out outputs/final-whistle-eng1.bs \
+  --espn-league eng.1 \
+  --episode-title "ENG1 Game Week 01 Preview" \
+  --episode-type game-week-preview \
+  --overlays examples/overlays.final-whistle-gantry.json \
+  --instructions-file prompts/final-whistle-season.txt
+```
+
+Use `--episode-type match-event --match-id <espn-event-id>` for an individual match show, `--episode-type recap --match-id <espn-event-id>` after ESPN marks the match completed, and `--episode-type outtake` for a behind-the-scenes cold-open version with hotter booth sarcasm and a static-disconnect ending.
 
 When a generated dialogue line calls out a Farcaster user from `sourceCasts`, the pipeline downloads that user's `pfp_url` and adds it as a timed foreground overlay near the line where they are mentioned.
 
@@ -172,6 +274,22 @@ runs/latest/script.json
 memory/*.json
 ```
 
+Artifact roles:
+
+| Path | Role | Iteration Cost |
+|---|---|---|
+| `runs/<episode>/feed.json` | Cached football-channel feed | Cheap |
+| `runs/<episode>/scoreboard.json` | Raw ESPN scoreboard response | Cheap |
+| `runs/<episode>/match_context.json` | Normalized selected ESPN match | Cheap |
+| `runs/<episode>/script.json` | Dialogue, episode metadata, preroll, outro effect | Cheap until `build-show` |
+| `runs/<episode>/espn-overlays.json` | Stadium/title plus ESPN logos, score, key-moment panel | Cheap |
+| `runs/<episode>/pfp-overlays.json` | Final merged overlay manifest passed into package build | Cheap |
+| `runs/<episode>/espn-assets/` | Downloaded/generated logo and score panel images | Cheap |
+| `runs/<episode>/key-moment-assets/` | Full-screen key-moment takeover graphics | Cheap |
+| `outputs/<episode>.bs` | Banny Studio package with generated audio | Expensive to recreate with hosted voices |
+| `outputs/<episode>.bannyshow/` | Unpacked editable Studio folder | No hosted voice cost |
+| `memory/*.json` | Episode memory used by future drafts | Cheap, but affects future scripts |
+
 ## Script Shape
 
 A generated script should be structured, not just plain text:
@@ -202,7 +320,7 @@ A generated script should be structured, not just plain text:
 }
 ```
 
-Script drafting wraps the generated commentary with a house-format intro and signoff. The show name is locked as `Match Replies`. The intro welcomes viewers, introduces Split, and gives Peel a fresh funny descriptor. The signoff riffs on creator calls to like, subscribe, share, or leave a take in the match replies.
+Script drafting wraps the generated commentary with a house-format intro and signoff. The default show name is `Final Whistle with Split & Peel`, with the recurring tagline `The whistle goes, the takes stay loud.` The script JSON also includes `showName`, `episodeTitle`, `episodeType`, `tagline`, a reusable `preroll` block for the Banny Studio bumper, and an `outroEffect` block for the static-disconnect ending. The intro welcomes viewers, introduces Split, and gives Peel a fresh funny descriptor. The signoff riffs on creator calls to like, subscribe, share, or leave a take in the match replies. `outtake` episodes instead use a cold-open preroll, skip the polished welcome/signoff, and end with the static-disconnect effect.
 
 ## Overlay Assets
 
@@ -228,6 +346,41 @@ Manifest format:
 
 Use transparent PNGs for desks and logos. Coordinates are normalized Banny stage positions; `x: 0.5`, `y: 0.5` is centered.
 
+Overlay manifests can be made episode-type aware:
+
+```json
+{
+  "name": "final-whistle-title-lockup",
+  "file": "examples/assets/final-whistle-title.png",
+  "excludeEpisodeTypes": ["outtake"],
+  "start": 0,
+  "dur": 8,
+  "x": 0.5,
+  "y": 0.58,
+  "scale": 0.58
+}
+```
+
+Use `includeEpisodeTypes` when an overlay belongs only to a specific format. Use `excludeEpisodeTypes` for reusable defaults that should be suppressed for a format such as `outtake`.
+
+## Audio Reuse And Cache
+
+`build-show` and `make` support two protections against accidental hosted TTS spend:
+
+- `--reuse-audio-from <existing.bs-or-bannyshow>` copies matching dialogue WAV files from a previous package or unpacked show.
+- `--skip-voice` refuses to call the configured voice provider. If any script line has no matching reusable or cached WAV, the command fails instead of spending money.
+
+Dialogue audio is also cached by default in `.cache/split-peel/audio/`. The cache key includes provider, voice/model settings, speaker, spoken text, and tone direction. Reusing cached audio works across runs even when the output clip ID changes because a line moved to a different position in the script.
+
+Controls:
+
+```bash
+SPLIT_PEEL_AUDIO_CACHE_DIR=.cache/split-peel/audio
+SPLIT_PEEL_AUDIO_CACHE=0   # disables the cache
+```
+
+Use `--skip-voice` for visual/layout iterations after the voice is approved. Do not use it after changing any spoken line, tone, speaker, or voice setting unless you also provide matching cached/reused audio.
+
 ## Characters And Memory
 
 Character profiles live in `characters/default.json`. Each character can define:
@@ -236,6 +389,7 @@ Character profiles live in `characters/default.json`. Each character can define:
 - `displayName`
 - `voice.openai`
 - `voice.local`
+- `appearance.baseOutfit`: Banny wardrobe defaults keyed by slot id
 - `voiceDirection`
 - `personality`
 - `preferences.targets`
@@ -243,6 +397,8 @@ Character profiles live in `characters/default.json`. Each character can define:
 - `catchphrases`
 
 Use `voiceDirection` for explicit TTS delivery notes such as cartoonish banana energy, pace, pitch impression, and performance style. `personality` controls the character's writing stance; `voiceDirection` controls how the line should sound.
+
+Split's default appearance is applied to every generated episode from `characters/default.json`: eyeliner (`5`), gap teeth (`7`), sweatsuit (`9`), and Dorthy hair (`12`).
 
 Inspect the active profile:
 
@@ -379,9 +535,10 @@ SPLIT_PEEL_MOUTH_MAX_OPEN_SEC=0.12
 SPLIT_PEEL_MOUTH_MIN_CLOSED_SEC=0.04
 SPLIT_PEEL_CAPTION_MAX_CHARS=42
 SPLIT_PEEL_BACKGROUND_GAIN=0.22
+SPLIT_PEEL_AUDIO_CACHE_DIR=.cache/split-peel/audio
 ```
 
-When `SPLIT_PEEL_VOICE_PROVIDER=openai` is set, the CLI will fail if `OPENAI_API_KEY` is missing instead of silently falling back to local Mac voices.
+The default voice provider is ElevenLabs. The CLI will fail if `ELEVENLABS_API_KEY` or per-character ElevenLabs voice IDs are missing instead of silently falling back to local Mac voices. Set `SPLIT_PEEL_VOICE_PROVIDER=openai` only for explicit OpenAI TTS tests or legacy runs.
 
 For ElevenLabs voice generation, use one voice ID per character:
 

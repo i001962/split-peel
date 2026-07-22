@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Optional
@@ -11,7 +12,10 @@ from split_peel.characters import DEFAULT_CHARACTERS, character_ids, character_m
 from split_peel.feed import RankedCast, rank_match_relevant_casts
 
 
-SHOW_NAME = "Match Replies"
+DEFAULT_SHOW_NAME = "Final Whistle with Split & Peel"
+DEFAULT_TAGLINE = "The whistle goes, the takes stay loud."
+DEFAULT_EPISODE_TYPE = "match-event"
+EPISODE_TYPE_CHOICES = ("game-week-preview", "match-event", "recap", "general", "outtake")
 
 
 def draft_script(
@@ -22,11 +26,16 @@ def draft_script(
     episode_memory: Optional[list[dict[str, Any]]] = None,
     instructions: Optional[str] = None,
     script_provider: Optional[str] = None,
+    episode_title: Optional[str] = None,
+    episode_type: str = DEFAULT_EPISODE_TYPE,
+    show_name: str = DEFAULT_SHOW_NAME,
+    tagline: str = DEFAULT_TAGLINE,
 ) -> dict[str, Any]:
     ranked = rank_match_relevant_casts(feed, match_context)
     characters = characters or DEFAULT_CHARACTERS
     episode_memory = episode_memory or []
     beats = _extract_beats(ranked, match_context, instructions)
+    beats = [_sanitize_spoken_text(beat, match_context) for beat in beats]
     provider = _script_provider(script_provider)
     if provider == "openai":
         dialogue = _draft_dialogue_openai(
@@ -36,15 +45,30 @@ def draft_script(
             characters=characters,
             episode_memory=episode_memory,
             instructions=instructions,
+            episode_type=episode_type,
         )
     elif provider in {"template", "local"}:
-        dialogue = _draft_dialogue(ranked, match_context, characters, episode_memory, instructions)
+        dialogue = _draft_dialogue(ranked, match_context, characters, episode_memory, instructions, episode_type=episode_type)
     else:
         raise RuntimeError(f"unknown script provider: {provider}")
-    dialogue = _add_house_lines(dialogue, match_context, characters)
+    metadata = _episode_metadata(
+        match_context=match_context,
+        beats=beats,
+        episode_title=episode_title,
+        episode_type=episode_type,
+        show_name=show_name,
+        tagline=tagline,
+    )
+    dialogue = _add_house_lines(dialogue, match_context, characters, metadata)
+    dialogue = _sanitize_spoken_dialogue(dialogue, match_context)
 
     return {
-        "title": _title_from_beats(beats, match_context),
+        "title": metadata["episodeTitle"],
+        "showName": metadata["showName"],
+        "episodeType": metadata["episodeType"],
+        "tagline": metadata["tagline"],
+        "preroll": metadata["preroll"],
+        "outroEffect": metadata["outroEffect"],
         "durationSec": duration_sec,
         "beats": beats,
         "instructions": instructions,
@@ -117,6 +141,9 @@ def _extract_beats(
         team_names = " vs ".join(team.get("name") or "Unknown" for team in teams[:2])
         status = (match.get("status") or {}).get("description") or "match"
         beats.append(f"Featured ESPN match: {team_names} ({status}).")
+        moment_summary = _key_moment_summary(match)
+        if moment_summary:
+            beats.append(f"Key match moments: {moment_summary}.")
         if not relevant_casts:
             beats.append("No strongly matching Farcaster casts were found for the featured ESPN match.")
 
@@ -157,6 +184,7 @@ def _draft_dialogue_openai(
     characters: Optional[dict[str, Any]] = None,
     episode_memory: Optional[list[dict[str, Any]]] = None,
     instructions: Optional[str] = None,
+    episode_type: str = DEFAULT_EPISODE_TYPE,
 ) -> list[dict[str, Any]]:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -182,24 +210,14 @@ def _draft_dialogue_openai(
                     {
                         "task": "Draft a new episode script. Be original each run. Do not use a reusable template.",
                         "durationSec": duration_sec,
+                        "episodeType": episode_type,
                         "allowedSpeakers": speakers,
                         "matchContext": match_context,
                         "characters": _character_prompt_payload(characters),
                         "sourceCasts": [_cast_payload(cast) for cast in casts[:8]],
                         "episodeMemoryMetadata": episode_memory or [],
                         "producerInstructions": instructions,
-                        "dialogueRules": [
-                            "Return 6 to 10 dialogue lines.",
-                            "Do not write a show welcome or signoff; the system adds those separately.",
-                            "Each line should be punchy enough for captions.",
-                            "Use specific match facts, venue, forms, team names, and absurd football logic.",
-                            "No Farcaster, social, cast, feed, timeline, prompt, instruction, or metadata references unless producerInstructions explicitly allow them.",
-                            "Do not say ESPN handed us anything.",
-                            "Do not repeat stock jokes like form guide prophecy, spreadsheet wearing boots, whiteboard lying, or fixture personality test.",
-                            "The tone field must be vivid voice-performance direction for TTS, not a category label.",
-                            "Good tone examples: 'starts mock-serious, then rockets into delighted disbelief'; 'fast whispered conspiracy, sharp final punch'; 'breathless British radio build, huge grin on the last phrase'.",
-                            "Vary tone across lines so the voices rise, fall, interrupt themselves, whisper, punch, and accelerate.",
-                        ],
+                        "dialogueRules": _dialogue_rules_for_episode(episode_type),
                     },
                     ensure_ascii=False,
                 ),
@@ -257,6 +275,36 @@ def _draft_dialogue_openai(
 
     payload = json.loads(_response_text(response_body))
     return _normalize_ai_dialogue(payload.get("dialogue"), speakers)
+
+
+def _dialogue_rules_for_episode(episode_type: str) -> list[str]:
+    rules = [
+        "Return 6 to 10 dialogue lines.",
+        "Do not write a show welcome or signoff; the system adds those separately.",
+        "Each line should be punchy enough for captions.",
+        "Use specific match facts, venue, forms, team names, and absurd football logic.",
+        "For spoken lines, always use full team names from matchContext.match.teams; abbreviations like ARS or PSG are for graphics only.",
+        "Expand weekday abbreviations in spoken lines, for example say Friday instead of Fri.",
+        "If matchContext.match.keyMoments is present, make at least two lines react directly to those moments with the clock, player or team, and event type.",
+        "For recap episodes, prioritize final score and keyMoments over generic form-guide setup.",
+        "No Farcaster, social, cast, feed, timeline, prompt, instruction, or metadata references unless producerInstructions explicitly allow them.",
+        "Do not say ESPN handed us anything.",
+        "Do not repeat stock jokes like form guide prophecy, spreadsheet wearing boots, whiteboard lying, or fixture personality test.",
+        "The tone field must be vivid voice-performance direction for TTS, not a category label.",
+        "Good tone examples: 'starts mock-serious, then rockets into delighted disbelief'; 'fast whispered conspiracy, sharp final punch'; 'breathless British radio build, huge grin on the last phrase'.",
+        "Vary tone across lines so the voices rise, fall, interrupt themselves, whisper, punch, and accelerate.",
+    ]
+    if episode_type == "outtake":
+        rules.extend(
+            [
+                "Outtake episodes are behind-the-scenes cold opens, as if the booth feed is accidentally live before the polished show.",
+                "Use sharper sarcasm and occasional foul language, but keep it funny rather than hateful or harassing.",
+                "The characters should sound like they might get fired if production heard this.",
+                "Do not have the characters realize the mic is hot or acknowledge the feed cutting out at the end.",
+                "Avoid a polished recap voice; make it messy, muttered, sarcastic, and too honest.",
+            ]
+        )
+    return rules
 
 
 def _character_prompt_payload(characters: dict[str, Any]) -> list[dict[str, Any]]:
@@ -320,12 +368,20 @@ def _add_house_lines(
     dialogue: list[dict[str, Any]],
     match_context: Optional[dict[str, Any]],
     characters: dict[str, Any],
+    metadata: dict[str, Any],
 ) -> list[dict[str, Any]]:
     speakers = character_ids(characters)
     if not dialogue or len(speakers) < 2:
         return dialogue
     match = (match_context or {}).get("match") or {}
-    intro_line = _house_intro(match, characters, speakers)
+    if metadata.get("episodeType") == "outtake":
+        wrapped = [
+            {"speaker": speakers[0], "line": _outtake_cold_open(match), "tone": "low off-air mutter, instantly annoyed, dry and too honest"},
+            *dialogue,
+            {"speaker": speakers[1], "line": _outtake_disconnect_line(match), "tone": "unaware off-air ramble, mid-thought trailing into a clipped cutoff"},
+        ]
+        return _retime_dialogue(wrapped)
+    intro_line = _house_intro(match, characters, speakers, metadata)
     signoff_line = _house_signoff(match, speakers)
     wrapped = [
         {"speaker": speakers[0], "line": intro_line, "tone": "bright show open, crisp host energy, playful lift on Peel's description"},
@@ -335,13 +391,40 @@ def _add_house_lines(
     return _retime_dialogue(wrapped)
 
 
-def _house_intro(match: dict[str, Any], characters: dict[str, Any], speakers: list[str]) -> str:
-    show_name = _show_name(match)
+def _outtake_cold_open(match: dict[str, Any]) -> str:
+    teams = match.get("teams") or []
+    if len(teams) >= 2:
+        first_name = _team_name(teams[0], "the home side")
+        second_name = _team_name(teams[1], "the visitors")
+        variants = [
+            f"{first_name} versus {second_name} already looks like a meeting that should have been an email, and somehow we are the agenda.",
+            f"Before anyone puts on the polite broadcast voice, {first_name} and {second_name} have dragged us into another beautifully stupid football problem.",
+            f"I swear, if {first_name} and {second_name} turn this into ninety minutes of tactical interpretive dance, I am billing the league directly.",
+        ]
+        return variants[_variant_index(match, "outtake-cold-open", len(variants))]
+    return "This football feed already looks like a producer lost a bet and handed us the keys."
+
+
+def _outtake_disconnect_line(match: dict[str, Any]) -> str:
+    variants = [
+        "Anyway, the entire setup is professionally cursed, and I am tired of pretending the clipboard has answers.",
+        "Fine, roll the clean version after this, and maybe nobody notices the booth has been running on caffeine and bad judgment.",
+        "The next sentence is absolutely a meeting with human resources, so I am going to say it quietly into this very innocent console.",
+        "If legal asks, I never said the expensive thing out loud; I merely implied it with elite body language.",
+    ]
+    return variants[_variant_index(match, "outtake-disconnect", len(variants))] if match else variants[0]
+
+
+def _house_intro(match: dict[str, Any], characters: dict[str, Any], speakers: list[str], metadata: dict[str, Any]) -> str:
+    show_name = str(metadata.get("showName") or DEFAULT_SHOW_NAME)
+    episode_title = str(metadata.get("episodeTitle") or "").strip()
+    tagline = str(metadata.get("tagline") or DEFAULT_TAGLINE).strip()
     character_names = character_map(characters)
     host_name = character_names.get(speakers[0], {}).get("displayName") or speakers[0].title()
     cohost_name = character_names.get(speakers[1], {}).get("displayName") or speakers[1].title()
     descriptor = _peel_descriptor(match)
-    return f"Welcome to {show_name}. I'm {host_name}, and as always I'm joined by {descriptor}, {cohost_name}."
+    episode_clause = f" {episode_title}." if episode_title else ""
+    return f"Welcome to {show_name}.{episode_clause} {tagline} I'm {host_name}, and as always I'm joined by {descriptor}, {cohost_name}."
 
 
 def _house_signoff(match: dict[str, Any], speakers: list[str]) -> str:
@@ -354,8 +437,52 @@ def _house_signoff(match: dict[str, Any], speakers: list[str]) -> str:
     return variants[_variant_index(match, "house-signoff", len(variants))] if match else variants[0]
 
 
-def _show_name(match: dict[str, Any]) -> str:
-    return SHOW_NAME
+def _episode_metadata(
+    match_context: Optional[dict[str, Any]],
+    beats: list[str],
+    episode_title: Optional[str],
+    episode_type: str,
+    show_name: str,
+    tagline: str,
+) -> dict[str, Any]:
+    match = (match_context or {}).get("match")
+    resolved_show_name = (show_name or DEFAULT_SHOW_NAME).strip()
+    resolved_tagline = (tagline or DEFAULT_TAGLINE).strip()
+    resolved_episode_type = (episode_type or DEFAULT_EPISODE_TYPE).strip()
+    resolved_episode_title = (episode_title or "").strip() or _title_from_beats(beats, match_context)
+    is_outtake = resolved_episode_type == "outtake"
+    return {
+        "showName": resolved_show_name,
+        "episodeTitle": resolved_episode_title,
+        "episodeType": resolved_episode_type,
+        "tagline": resolved_tagline,
+        "preroll": {
+            "name": f"{resolved_show_name} {'cold open' if is_outtake else 'reusable preroll'}",
+            "type": "cold-open" if is_outtake else "broadcast-bumper",
+            "durationSec": 5 if is_outtake else 8,
+            "musicDirection": (
+                "no polished bumper; abrupt booth room tone, low crowd bleed, tiny console buzz"
+                if is_outtake
+                else "fast stadium sting, crowd swell, whistle hit, tight broadcast bumper"
+            ),
+            "visualDirection": (
+                "Cold open on the gantry booth already in progress: Split left, Peel right, stadium behind them, "
+                "graphics late to lock in, slightly illicit hot-mic energy."
+                if is_outtake
+                else "Gantry booth over the stadium background: Split left, Peel right, team logos above them, "
+                "match title and score/key moments centered."
+            ),
+            "voiceover": "" if is_outtake else f"{resolved_show_name}. {resolved_tagline}",
+            "dynamicFields": ["episodeTitle", "episodeType", "match.shortName", "match.status", "teamLogos"],
+        },
+        "outroEffect": {
+            "type": "static-disconnect",
+            "enabled": True,
+            "durationSec": 1.15 if is_outtake else 0.85,
+            "audioDirection": "hard static burst, signal crumble, abrupt broadcast disconnect",
+            "visualDirection": "one-frame white tear, noisy scanline static, then black",
+        },
+    }
 
 
 def _peel_descriptor(match: dict[str, Any]) -> str:
@@ -397,19 +524,100 @@ def _clean_spoken_line(line: str) -> str:
     return line
 
 
+def _sanitize_spoken_dialogue(
+    dialogue: list[dict[str, Any]],
+    match_context: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sanitized: list[dict[str, Any]] = []
+    for item in dialogue:
+        line = _sanitize_spoken_text(str(item.get("line") or ""), match_context)
+        if not line:
+            continue
+        sanitized.append({**item, "line": line})
+    return sanitized
+
+
+def _sanitize_spoken_text(text: str, match_context: Optional[dict[str, Any]]) -> str:
+    text = _expand_weekday_abbreviations(text)
+    text = _expand_team_abbreviations(text, match_context)
+    return " ".join(text.split()).strip()
+
+
+def _expand_weekday_abbreviations(text: str) -> str:
+    replacements = {
+        "mon": "Monday",
+        "monday": "Monday",
+        "tue": "Tuesday",
+        "tues": "Tuesday",
+        "tuesday": "Tuesday",
+        "wed": "Wednesday",
+        "wednesday": "Wednesday",
+        "thu": "Thursday",
+        "thur": "Thursday",
+        "thurs": "Thursday",
+        "thursday": "Thursday",
+        "fri": "Friday",
+        "friday": "Friday",
+        "sat": "Saturday",
+        "saturday": "Saturday",
+        "sun": "Sunday",
+        "sunday": "Sunday",
+    }
+
+    def replace(match: re.Match[str]) -> str:
+        return replacements[match.group(1).lower()]
+
+    pattern = re.compile(
+        r"(?<![A-Za-z])("
+        r"Mon|Monday|Tue|Tues|Tuesday|Wed|Wednesday|Thu|Thur|Thurs|Thursday|"
+        r"Fri|Friday|Sat|Saturday|Sun|Sunday"
+        r")\.?(?![A-Za-z])",
+        re.IGNORECASE,
+    )
+    return pattern.sub(replace, text)
+
+
+def _expand_team_abbreviations(text: str, match_context: Optional[dict[str, Any]]) -> str:
+    match = (match_context or {}).get("match") or {}
+    replacements = _team_spoken_replacements(match)
+    for abbreviation, team_name in replacements:
+        pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(abbreviation)}(?![A-Za-z0-9])", re.IGNORECASE)
+        text = pattern.sub(team_name, text)
+    return text
+
+
+def _team_spoken_replacements(match: dict[str, Any]) -> list[tuple[str, str]]:
+    replacements: dict[str, str] = {}
+    for team in match.get("teams") or []:
+        if not isinstance(team, dict):
+            continue
+        team_name = str(team.get("name") or "").strip()
+        if not team_name:
+            continue
+        for key in ("abbreviation", "shortName", "displayName"):
+            value = str(team.get(key) or "").strip()
+            if value and value.lower() != team_name.lower():
+                replacements[value] = team_name
+    return sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True)
+
+
 def _draft_dialogue(
     casts: list[RankedCast],
     match_context: Optional[dict[str, Any]] = None,
     characters: Optional[dict[str, Any]] = None,
     episode_memory: Optional[list[dict[str, Any]]] = None,
     instructions: Optional[str] = None,
+    episode_type: str = DEFAULT_EPISODE_TYPE,
 ) -> list[dict[str, Any]]:
     characters = characters or DEFAULT_CHARACTERS
     speakers = character_ids(characters)
-    lines = _opening_lines(match_context, speakers, characters)
+    lines = _opening_lines(match_context, speakers, characters, episode_type=episode_type)
     match = (match_context or {}).get("match")
     match_relevant_casts = [cast for cast in casts if cast.match_hits > 0] if match else casts
     social_allowed = _social_references_allowed(instructions)
+
+    if match:
+        lines.extend(_key_moment_lines(match, speakers))
 
     if match and not match_relevant_casts:
         lines.extend(_no_relevant_cast_lines(match, speakers, social_allowed))
@@ -425,7 +633,7 @@ def _draft_dialogue(
         if len(seen_paraphrases) >= 5:
             break
 
-    lines.extend(_closing_lines(match, speakers, social_allowed))
+    lines.extend(_closing_lines(match, speakers, social_allowed, episode_type=episode_type))
 
     start = 0.5
     dialogue: list[dict[str, Any]] = []
@@ -535,7 +743,22 @@ def _closing_lines(
     match: Optional[dict[str, Any]],
     speakers: list[str],
     social_allowed: bool,
+    episode_type: str = DEFAULT_EPISODE_TYPE,
 ) -> list[tuple[str, str, str]]:
+    if episode_type == "outtake":
+        return [
+            (
+                speakers[0],
+                "My official note is that everyone did their best; my private note is mostly swear words with arrows pointing at the midfield.",
+                "too-honest whisper, sarcastic emphasis on official",
+            ),
+            (
+                speakers[1 % len(speakers)],
+                "That is generous. My private note just says dear God, then underlines the substitution pattern until the pen gives up.",
+                "dry disbelief, almost laughing, clipped final beat",
+            ),
+        ]
+
     if match and not social_allowed:
         teams = match.get("teams") or []
         if len(teams) >= 2:
@@ -607,10 +830,113 @@ def _closing_lines(
     ]
 
 
+def _key_moment_lines(match: dict[str, Any], speakers: list[str]) -> list[tuple[str, str, str]]:
+    moments = _usable_key_moments(match)
+    if not moments:
+        return []
+
+    lines: list[tuple[str, str, str]] = []
+    first = moments[0]
+    first_clock = _moment_clock_text(first)
+    first_text = _moment_spoken_text(first)
+    first_team = _moment_team_text(first)
+    first_team_clause = f" for {first_team}" if first_team else ""
+    lines.append(
+        (
+            speakers[0],
+            f"The match detonates at {first_clock}: {first_text}{first_team_clause}. That is not an opening act, that is somebody throwing the plot through the gantry window.",
+            "breathless recap, delighted disbelief, punch the image at the end",
+        )
+    )
+
+    if len(moments) >= 2:
+        second = _select_second_key_moment(moments)
+        second_clock = _moment_clock_text(second)
+        second_text = _moment_spoken_text(second)
+        second_team = _moment_team_text(second)
+        second_team_clause = f" from {second_team}" if second_team else ""
+        lines.append(
+            (
+                speakers[1 % len(speakers)],
+                f"Then {second_clock} brings {second_text}{second_team_clause}, which is football's way of knocking over the tactics board and blaming gravity.",
+                "mock-serious analysis that turns into a grin",
+            )
+        )
+
+    if len(moments) >= 3 and _match_completed(match):
+        late = moments[-1]
+        late_clock = _moment_clock_text(late)
+        late_text = _moment_spoken_text(late)
+        lines.append(
+            (
+                speakers[len(lines) % len(speakers)],
+                f"By {late_clock}, we are at {late_text}, and the calm recap has officially left the stadium in a tiny emergency vehicle.",
+                "fast escalation, comic final button",
+            )
+        )
+
+    return lines[:3]
+
+
+def _match_completed(match: dict[str, Any]) -> bool:
+    status = match.get("status") or {}
+    state = str(status.get("state") or "").lower()
+    description = " ".join(
+        str(status.get(key) or "").lower()
+        for key in ("description", "detail", "shortDetail")
+    )
+    return state == "post" or "final" in description or "full time" in description or "completed" in description
+
+
+def _usable_key_moments(match: dict[str, Any]) -> list[dict[str, Any]]:
+    moments = []
+    for moment in match.get("keyMoments") or []:
+        if not isinstance(moment, dict):
+            continue
+        text = _moment_spoken_text(moment)
+        if text:
+            moments.append(moment)
+    return moments[:6]
+
+
+def _select_second_key_moment(moments: list[dict[str, Any]]) -> dict[str, Any]:
+    scoring_terms = ("goal", "penalty", "scored", "own goal")
+    for moment in moments[1:]:
+        text = " ".join(str(moment.get(key) or "").lower() for key in ("text", "type"))
+        if any(term in text for term in scoring_terms):
+            return moment
+    return moments[1]
+
+
+def _key_moment_summary(match: dict[str, Any]) -> str:
+    summaries = []
+    for moment in _usable_key_moments(match)[:4]:
+        clock = _moment_clock_text(moment)
+        text = _moment_spoken_text(moment)
+        team = _moment_team_text(moment)
+        team_clause = f" ({team})" if team else ""
+        summaries.append(f"{clock} {text}{team_clause}")
+    return "; ".join(summaries)
+
+
+def _moment_clock_text(moment: dict[str, Any]) -> str:
+    return str(moment.get("clock") or "a key moment").strip()
+
+
+def _moment_spoken_text(moment: dict[str, Any]) -> str:
+    text = str(moment.get("text") or moment.get("type") or "").strip()
+    return " ".join(text.split())
+
+
+def _moment_team_text(moment: dict[str, Any]) -> str:
+    return str(moment.get("team") or "").strip()
+
+
 def _opening_lines(
     match_context: Optional[dict[str, Any]] = None,
     speakers: Optional[list[str]] = None,
     characters: Optional[dict[str, Any]] = None,
+    episode_type: str = DEFAULT_EPISODE_TYPE,
 ) -> list[tuple[str, str, str]]:
     speakers = speakers or ["split", "peel"]
     match = (match_context or {}).get("match")
@@ -618,6 +944,19 @@ def _opening_lines(
     speaker_one_name = character_names.get(speakers[0], {}).get("displayName") or speakers[0]
     speaker_two_name = character_names.get(speakers[1 % len(speakers)], {}).get("displayName") or speakers[1 % len(speakers)]
     if not match:
+        if episode_type == "outtake":
+            return [
+                (
+                    speakers[0],
+                    f"{speaker_one_name} has opened the football channel and, frankly, half these takes need a warning label and a mop.",
+                    "low hot-mic sarcasm, amused and irritated",
+                ),
+                (
+                    speakers[1 % len(speakers)],
+                    f"{speaker_two_name} is staring at the feed like it owes us hazard pay, which it absolutely does.",
+                    "muttered deadpan, quick laugh on hazard pay",
+                ),
+            ]
         return [
             (
                 speakers[0],
@@ -637,6 +976,34 @@ def _opening_lines(
     detail = status.get("detail") or status.get("description") or "on the board"
     venue = (match.get("venue") or {}).get("name")
     venue_line = f" at {venue}" if venue else ""
+    if episode_type == "outtake":
+        variants = [
+            [
+                (
+                    speakers[0],
+                    f"{team_names}{venue_line}. Fantastic. Another official-looking fixture with unofficial levels of bullshit already attached.",
+                    "off-air deadpan, sharper on bullshit",
+                ),
+                (
+                    speakers[1 % len(speakers)],
+                    f"The board says {detail}, which is broadcaster code for smile nicely while the match notes quietly catch fire.",
+                    "sarcastic booth whisper, rising irritation",
+                ),
+            ],
+            [
+                (
+                    speakers[0],
+                    f"We have {team_names}{venue_line}, marked {detail}, and somehow the calm version of this show is already lying to people.",
+                    "low dry complaint, amused final jab",
+                ),
+                (
+                    speakers[1 % len(speakers)],
+                    "Good. I brought three notes: one tactical, one legal, and one that just says do not say that on air.",
+                    "fast conspiratorial aside, bite the last phrase",
+                ),
+            ],
+        ]
+        return variants[_variant_index(match, "outtake-opening", len(variants))]
     variants = [
         [
             (

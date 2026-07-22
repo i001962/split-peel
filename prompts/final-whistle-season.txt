@@ -1,0 +1,20 @@
+Build a Final Whistle with Split & Peel football episode.
+
+Format:
+- Split is on the left and Peel is on the right.
+- Use a stadium gantry booth feel: pitch and stands behind them, announcers in the foreground.
+- Put the home and away team logos above the characters.
+- Keep the matchup, score or status, and key ESPN moments centered.
+- For game-week preview episodes, cover every ENG.1 match in the selected ESPN scoreboard.
+- For match-event episodes, focus on the selected ESPN match id.
+- For recap episodes, lead with the final score and the strongest key moments.
+- For outtake episodes, make it a behind-the-scenes cold open with sarcastic hot-mic energy, occasional foul language, and no polished welcome or creator signoff.
+- Spoken script lines must use full team names, never abbreviations. Say Arsenal, not ARS; say Paris Saint-Germain, not PSG. Abbreviations are for scoreboards and graphics only.
+- Spoken script lines must expand weekday abbreviations. Say Friday, Saturday, and Sunday, never Fri, Sat, or Sun.
+- Use the football-channel NFT parent URL feed through the configured parent-url feed endpoint, filter for relevant casts, call out usernames for good banter, and playfully roast bad calls without harassment.
+- Do not quote casts verbatim. Paraphrase and react.
+- Outtake characters should not realize the mic is hot or acknowledge the static disconnect.
+- Keep it fast, funny, specific, and broadcast-like.
+
+Recurring intro:
+Welcome to Final Whistle with Split & Peel. The whistle goes, the takes stay loud.

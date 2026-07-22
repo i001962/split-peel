@@ -1,0 +1,25 @@
+{
+  "overlays": [
+    {
+      "name": "final-whistle-stadium-gantry",
+      "file": "/Users/kmm/Library/Mobile Documents/iCloud~com~banny~BannyStudio/Documents/bannycup/assets/amrr2nujet3b9re.png",
+      "target": "background",
+      "replace": true,
+      "start": 0,
+      "dur": "full",
+      "x": 0.5,
+      "y": 0.5,
+      "scale": 1.0
+    },
+    {
+      "name": "final-whistle-title-lockup",
+      "file": "examples/assets/final-whistle-title.png",
+      "excludeEpisodeTypes": ["outtake"],
+      "start": 0,
+      "dur": 8,
+      "x": 0.5,
+      "y": 0.58,
+      "scale": 0.58
+    }
+  ]
+}

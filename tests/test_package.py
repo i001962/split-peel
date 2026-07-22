@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import List, Tuple
 
 from split_peel.package import (
+    _apply_character_appearance,
     _set_background_audio_gain,
     _trim_timeline_to_duration,
     _replace_character_subtitles,
+    build_show,
     inspect_package,
     repair_banny_wardrobe,
     retime_mouth_events,
@@ -16,6 +18,7 @@ from split_peel.package import (
     unpack_package,
 )
 from split_peel.audio import VoiceClip
+from split_peel.package_ids import make_id
 
 
 def test_roundtrip_package_preserves_show_json(tmp_path: Path):
@@ -120,6 +123,121 @@ def test_replace_character_subtitles_uses_dialogue_timing(monkeypatch):
     assert stage["characters"][1]["subs"] == [{"dur": 1.6, "start": 2.0, "text": "Peel line"}]
 
 
+def test_apply_character_appearance_sets_split_default_look():
+    stage = {
+        "characters": [
+            {"baseOutfit": {"11": "zipper-jacket", "12": "headphones"}},
+            {"baseOutfit": {"12": "headphones"}},
+        ]
+    }
+    characters = {
+        "characters": [
+            {
+                "id": "split",
+                "appearance": {
+                    "baseOutfit": {
+                        "5": "eyeliner",
+                        "7": "gapteeth",
+                        "9": "sweatsuit",
+                        "12": "dorthy-hair",
+                    }
+                },
+            },
+            {"id": "peel"},
+        ]
+    }
+
+    _apply_character_appearance(stage, characters)
+
+    assert stage["characters"][0]["baseOutfit"] == {
+        "5": "eyeliner",
+        "7": "gapteeth",
+        "9": "sweatsuit",
+        "12": "dorthy-hair",
+    }
+    assert stage["characters"][1]["baseOutfit"] == {"12": "headphones"}
+
+
+def test_build_show_appends_static_disconnect_outro_effect(tmp_path: Path, monkeypatch):
+    template = tmp_path / "template.bs"
+    script_path = tmp_path / "script.json"
+    output = tmp_path / "output.bs"
+    show = {
+        "show": [{"from": 0, "to": 5}],
+        "assets": [],
+        "stage": {
+            "audioTracks": [{"clips": []}],
+            "backgroundTracks": [],
+            "characters": [{"events": [], "subs": []}, {"events": [], "subs": []}],
+        },
+    }
+    with zipfile.ZipFile(template, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("show.json", json.dumps(show))
+    script_path.write_text(
+        json.dumps(
+            {
+                "dialogue": [{"speaker": "split", "line": "One more private note.", "tone": "dry"}],
+                "outroEffect": {"type": "static-disconnect", "enabled": True, "durationSec": 0.5},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_synthesize_dialogue(dialogue, audio_dir, characters=None, **kwargs):
+        return [VoiceClip("dialogue-one", "split", "One more private note.", 0.5, 1.0, [])]
+
+    monkeypatch.setattr("split_peel.package.synthesize_dialogue", fake_synthesize_dialogue)
+
+    build_show(template, script_path, output)
+
+    with zipfile.ZipFile(output) as archive:
+        rendered = json.loads(archive.read("show.json"))
+        names = archive.namelist()
+        effect_clip = rendered["stage"]["audioTracks"][0]["clips"][-1]
+
+    assert "audio/static-disconnect.wav" in names
+    assert effect_clip["id"] == "static-disconnect"
+    assert "effect" not in effect_clip
+    assert effect_clip["fx"]["pan"] == "follow"
+    assert effect_clip["start"] == 1.62
+    assert effect_clip["dur"] == 0.5
+    assert rendered["show"][0]["to"] == 3.12
+
+
+def test_build_show_reuses_audio_from_existing_package_when_skip_voice(tmp_path: Path):
+    template = tmp_path / "template.bs"
+    reuse = tmp_path / "reuse.bs"
+    script_path = tmp_path / "script.json"
+    output = tmp_path / "output.bs"
+    line = {"speaker": "split", "line": "Reusable line.", "tone": "dry"}
+    clip_id = make_id(f"000-split-{line['line']}-{line['tone']}")
+    show = {
+        "show": [{"from": 0, "to": 5}],
+        "assets": [],
+        "stage": {
+            "audioTracks": [{"clips": []}],
+            "backgroundTracks": [],
+            "characters": [{"events": [], "subs": []}, {"events": [], "subs": []}],
+        },
+    }
+    with zipfile.ZipFile(template, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("show.json", json.dumps(show))
+    with zipfile.ZipFile(reuse, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("show.json", json.dumps(show))
+        archive.writestr(f"audio/{clip_id}.wav", _test_wav_bytes([(0.0, 0.35, 7000)]))
+    script_path.write_text(json.dumps({"dialogue": [line], "outroEffect": {"enabled": False}}), encoding="utf-8")
+
+    build_show(template, script_path, output, reuse_audio_from=reuse, skip_voice=True)
+
+    with zipfile.ZipFile(output) as archive:
+        rendered = json.loads(archive.read("show.json"))
+        names = archive.namelist()
+
+    assert f"audio/{clip_id}.wav" in names
+    assert "_reuse_audio" not in "\n".join(names)
+    assert rendered["stage"]["audioTracks"][0]["clips"][0]["id"] == clip_id
+
+
 def test_retime_mouth_events_replaces_stale_keym_events(tmp_path: Path, monkeypatch):
     package_dir = tmp_path / "show.bannyshow"
     audio_dir = package_dir / "audio"
@@ -144,11 +262,13 @@ def test_retime_mouth_events_replaces_stale_keym_events(tmp_path: Path, monkeypa
                     ],
                     "backgroundTracks": [],
                     "characters": [
-                        {"events": [{"code": "Period", "down": True, "t": 1.2}]},
+                        {"events": [{"code": "KeyT", "down": True, "t": 1.2}]},
                         {
                             "events": [
                                 {"code": "KeyM", "down": True, "t": 1.0},
                                 {"code": "KeyM", "down": False, "t": 9.0},
+                                {"code": "Comma", "down": True, "t": 1.1},
+                                {"code": "Comma", "down": False, "t": 1.2},
                             ]
                         },
                     ],
@@ -163,10 +283,11 @@ def test_retime_mouth_events_replaces_stale_keym_events(tmp_path: Path, monkeypa
     retime_mouth_events(package_dir, out_dir)
 
     stage = json.loads((out_dir / "show.json").read_text(encoding="utf-8"))["stage"]
-    assert stage["characters"][0]["events"] == [{"code": "Period", "down": True, "t": 1.2}]
+    assert stage["characters"][0]["events"] == [{"code": "KeyT", "down": True, "t": 1.2}]
     peel_events = stage["characters"][1]["events"]
     assert all(event["t"] < 2.0 for event in peel_events)
     assert len([event for event in peel_events if event["code"] == "KeyM"]) >= 4
+    assert any(event["code"] in {"Comma", "Period", "Slash"} for event in peel_events)
 
 
 def test_repair_banny_wardrobe_removes_invalid_base_outfits(tmp_path: Path):
@@ -177,7 +298,7 @@ def test_repair_banny_wardrobe_removes_invalid_base_outfits(tmp_path: Path):
             "audioTracks": [],
             "backgroundTracks": [],
             "characters": [
-                {"baseOutfit": {"6": "proff-glasses", "5": "glassy"}},
+                {"baseOutfit": {"6": "proff-glasses", "5": "eyeliner", "7": "gapteeth", "14": "fake"}},
                 {"baseOutfit": {"11": "zipper-jacket"}},
             ],
         },
@@ -186,7 +307,9 @@ def test_repair_banny_wardrobe_removes_invalid_base_outfits(tmp_path: Path):
         "slots": [
             {"slot": 6, "outfits": [{"name": "proff-glasses"}]},
             {"slot": 11, "outfits": [{"name": "zipper-jacket"}]},
-        ]
+        ],
+        "eyes": ["default", "eyeliner"],
+        "mouths": ["default", "gapteeth"],
     }
     with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_STORED) as archive:
         archive.writestr("show.json", json.dumps(show))
@@ -196,26 +319,34 @@ def test_repair_banny_wardrobe_removes_invalid_base_outfits(tmp_path: Path):
     assert repairs == [
         {
             "character": "0",
-            "slot": "5",
-            "outfit": "glassy",
+            "slot": "14",
+            "outfit": "fake",
             "action": "removed-invalid-baseOutfit",
         }
     ]
     with zipfile.ZipFile(package) as archive:
         repaired = json.loads(archive.read("show.json"))
-    assert repaired["stage"]["characters"][0]["baseOutfit"] == {"6": "proff-glasses"}
+    assert repaired["stage"]["characters"][0]["baseOutfit"] == {"6": "proff-glasses", "5": "eyeliner", "7": "gapteeth"}
     assert repaired["stage"]["characters"][1]["baseOutfit"] == {"11": "zipper-jacket"}
 
 
 def _write_test_wav(path: Path, segments: List[Tuple[float, float, int]], sample_rate: int = 22050) -> None:
+    path.write_bytes(_test_wav_bytes(segments, sample_rate=sample_rate))
+
+
+def _test_wav_bytes(segments: List[Tuple[float, float, int]], sample_rate: int = 22050) -> bytes:
+    import io
+
     samples = []
     for start, end, amplitude in segments:
         frame_count = int((end - start) * sample_rate)
         for index in range(frame_count):
             value = int(amplitude * math.sin(2 * math.pi * 220 * (index / sample_rate))) if amplitude else 0
             samples.append(value)
-    with wave.open(str(path), "wb") as wav:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
         wav.writeframes(b"".join(sample.to_bytes(2, "little", signed=True) for sample in samples))
+    return buffer.getvalue()

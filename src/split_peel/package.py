@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
 import tempfile
+import wave
 import zipfile
 from pathlib import Path
 from typing import Any, Optional
 
-from split_peel.audio import VoiceClip, detect_mouth_events, synthesize_dialogue
+from split_peel.audio import VoiceClip, detect_eye_events, detect_mouth_events, synthesize_dialogue
+from split_peel.characters import character_ids, character_map
 from split_peel.motion import SPEAKER_CHARACTER_INDEX, build_character_events
 from split_peel.overlays import apply_overlays, load_overlay_manifest
 
@@ -105,6 +108,8 @@ def build_show(
     background_gain: Optional[float] = None,
     overlays: Optional[Path] = None,
     characters: Optional[dict[str, Any]] = None,
+    reuse_audio_from: Optional[Path] = None,
+    skip_voice: bool = False,
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="split-peel-") as tmp:
@@ -112,6 +117,7 @@ def build_show(
         with zipfile.ZipFile(template) as archive:
             archive.extractall(tmp_path)
         _validate_show_json(tmp_path / "show.json")
+        reuse_audio_dirs = _reuse_audio_dirs(tmp_path, reuse_audio_from, include_template=skip_voice)
 
         if script is not None:
             payload = json.loads(script.read_text(encoding="utf-8"))
@@ -121,8 +127,11 @@ def build_show(
                 background_gain=background_gain,
                 overlays_path=overlays,
                 characters=characters,
+                reuse_audio_dirs=reuse_audio_dirs,
+                skip_voice=skip_voice,
             )
 
+        shutil.rmtree(tmp_path / "_reuse_audio", ignore_errors=True)
         _zip_directory(tmp_path, out)
 
 
@@ -132,6 +141,8 @@ def _apply_script_to_package(
     background_gain: Optional[float] = None,
     overlays_path: Optional[Path] = None,
     characters: Optional[dict[str, Any]] = None,
+    reuse_audio_dirs: Optional[list[Path]] = None,
+    skip_voice: bool = False,
 ) -> None:
     dialogue = script.get("dialogue")
     if not isinstance(dialogue, list):
@@ -144,21 +155,59 @@ def _apply_script_to_package(
         raise BannyPackageError("show.json is missing stage")
 
     audio_dir = package_dir / "audio"
-    clips = synthesize_dialogue(dialogue, audio_dir, characters=characters)
+    clips = synthesize_dialogue(
+        dialogue,
+        audio_dir,
+        characters=characters,
+        reuse_audio_dirs=reuse_audio_dirs,
+        skip_voice=skip_voice,
+    )
     if not clips:
         raise BannyPackageError("script did not produce any voice clips")
 
+    _apply_character_appearance(stage, characters)
     _replace_dialogue_track(stage, clips)
     _set_background_audio_gain(stage, background_gain)
-    duration = max(clip.start + clip.duration for clip in clips) + 1.0
+    dialogue_end = max(clip.start + clip.duration for clip in clips)
+    effect_end = _append_outro_effect(stage, script, audio_dir, dialogue_end)
+    duration = max(dialogue_end, effect_end) + 1.0
     _replace_character_events(stage, clips, duration)
     _replace_character_subtitles(stage, clips)
     _extend_show_duration(show, duration)
     _trim_timeline_to_duration(stage, duration)
-    apply_overlays(package_dir, show, load_overlay_manifest(overlays_path), duration)
+    apply_overlays(package_dir, show, load_overlay_manifest(overlays_path), duration, episode_type=script.get("episodeType"))
     _remove_unreferenced_audio(package_dir, stage)
 
     show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _reuse_audio_dirs(package_dir: Path, reuse_audio_from: Optional[Path], include_template: bool = False) -> list[Path]:
+    dirs: list[Path] = []
+    if include_template:
+        template_audio = package_dir / "audio"
+        if template_audio.exists():
+            dirs.append(template_audio)
+    if not reuse_audio_from:
+        return dirs
+
+    source = reuse_audio_from.expanduser()
+    if not source.exists():
+        raise BannyPackageError(f"reuse audio source does not exist: {source}")
+    if source.is_dir():
+        audio_dir = source / "audio"
+        if audio_dir.exists():
+            dirs.append(audio_dir)
+        return dirs
+
+    extracted = package_dir / "_reuse_audio"
+    extracted.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(source) as archive:
+        for info in archive.infolist():
+            if info.filename.startswith("audio/") and info.filename.endswith(".wav"):
+                destination = extracted / Path(info.filename).name
+                destination.write_bytes(archive.read(info.filename))
+    dirs.append(extracted)
+    return dirs
 
 
 def _set_background_audio_gain(stage: dict[str, Any], background_gain: Optional[float]) -> None:
@@ -218,6 +267,68 @@ def _replace_dialogue_track(stage: dict[str, Any], clips: list[VoiceClip]) -> No
     ]
 
 
+def _append_outro_effect(stage: dict[str, Any], script: dict[str, Any], audio_dir: Path, dialogue_end: float) -> float:
+    effect = script.get("outroEffect") or {}
+    if not isinstance(effect, dict) or effect.get("enabled") is False:
+        return dialogue_end
+    if effect.get("type") != "static-disconnect":
+        return dialogue_end
+
+    audio_tracks = stage.get("audioTracks")
+    if not isinstance(audio_tracks, list) or not audio_tracks:
+        return dialogue_end
+
+    duration = _outro_effect_duration(effect)
+    start = round(dialogue_end + 0.12, 3)
+    clip_id = "static-disconnect"
+    _write_static_disconnect_wav(audio_dir / f"{clip_id}.wav", duration)
+    audio_tracks[0].setdefault("clips", []).append(
+        {
+            "dur": duration,
+            "fx": {
+                "gain": 0.82,
+                "high": 10,
+                "low": -8,
+                "mid": 2,
+                "pan": "follow",
+                "reverb": 0,
+            },
+            "id": clip_id,
+            "name": "effect-static-disconnect",
+            "offset": 0,
+            "srcDur": duration,
+            "start": start,
+        }
+    )
+    return start + duration
+
+
+def _outro_effect_duration(effect: dict[str, Any]) -> float:
+    try:
+        duration = float(effect.get("durationSec") or 0.85)
+    except (TypeError, ValueError):
+        duration = 0.85
+    return round(max(0.25, min(3.0, duration)), 3)
+
+
+def _write_static_disconnect_wav(path: Path, duration: float, sample_rate: int = 22050) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame_count = max(1, int(duration * sample_rate))
+    seed = 0x5EED
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        for index in range(frame_count):
+            seed = (1103515245 * seed + 12345) & 0x7FFFFFFF
+            white = ((seed / 0x7FFFFFFF) * 2.0) - 1.0
+            crackle = 1.0 if index % 997 < 24 else 0.0
+            fade = 1.0 - (index / frame_count)
+            carrier = math.sin(2 * math.pi * 4300 * (index / sample_rate)) * 0.24
+            sample = int(max(-1.0, min(1.0, (white * 0.72 + carrier + crackle * 0.55) * fade)) * 22000)
+            wav.writeframesraw(sample.to_bytes(2, byteorder="little", signed=True))
+
+
 def _replace_character_events(stage: dict[str, Any], clips: list[VoiceClip], duration: float) -> None:
     characters = stage.get("characters")
     if not isinstance(characters, list) or not characters:
@@ -242,6 +353,47 @@ def _replace_character_subtitles(stage: dict[str, Any], clips: list[VoiceClip]) 
 
     for character, subs in zip(characters, subs_by_character):
         character["subs"] = subs
+
+
+def _apply_character_appearance(stage: dict[str, Any], characters: Optional[dict[str, Any]]) -> None:
+    profiles = characters or {}
+    profile_map = character_map(profiles)
+    speaker_ids = character_ids(profiles)
+    stage_characters = stage.get("characters")
+    if not isinstance(stage_characters, list):
+        return
+
+    for index, speaker_id in enumerate(speaker_ids):
+        if index >= len(stage_characters):
+            continue
+        profile = profile_map.get(speaker_id) or {}
+        appearance = profile.get("appearance") or {}
+        base_outfit = appearance.get("baseOutfit")
+        if isinstance(base_outfit, dict):
+            _apply_base_outfit(stage_characters[index], base_outfit)
+        if appearance.get("body"):
+            stage_characters[index]["body"] = str(appearance["body"])
+
+
+def _apply_base_outfit(character: dict[str, Any], base_outfit: dict[str, Any]) -> None:
+    outfit = character.setdefault("baseOutfit", {})
+    if not isinstance(outfit, dict):
+        outfit = {}
+        character["baseOutfit"] = outfit
+
+    normalized = {str(slot): str(name) for slot, name in base_outfit.items() if name}
+    for slot in normalized:
+        for hidden_slot in _exclusive_slots(slot):
+            outfit.pop(hidden_slot, None)
+    outfit.update(normalized)
+
+
+def _exclusive_slots(slot: str) -> tuple[str, ...]:
+    if slot == "4":
+        return ("6", "12")
+    if slot == "9":
+        return ("10", "11")
+    return ()
 
 
 def _caption_segments(text: str, start: float, duration: float) -> list[dict[str, object]]:
@@ -360,11 +512,14 @@ def _retime_mouth_events_in_dir(package_dir: Path) -> None:
         raise BannyPackageError("stage is missing characters")
 
     events_by_character: list[list[dict[str, object]]] = []
+    retimed_codes = {"KeyM", "Comma", "Period", "Slash"}
     for character in characters:
         existing_events = character.get("events") or []
-        events_by_character.append([event for event in existing_events if event.get("code") != "KeyM"])
+        events_by_character.append([event for event in existing_events if event.get("code") not in retimed_codes])
 
     for clip in dialogue_clips:
+        if _is_outro_effect_clip(clip):
+            continue
         clip_id = str(clip.get("id") or "")
         wav_path = package_dir / "audio" / f"{clip_id}.wav"
         if not clip_id or not wav_path.exists():
@@ -372,7 +527,9 @@ def _retime_mouth_events_in_dir(package_dir: Path) -> None:
         character_index = SPEAKER_CHARACTER_INDEX.get(_speaker_from_clip(clip), 0)
         if character_index >= len(events_by_character):
             continue
-        events_by_character[character_index].extend(detect_mouth_events(wav_path, offset=float(clip.get("start") or 0)))
+        start = float(clip.get("start") or 0)
+        events_by_character[character_index].extend(detect_mouth_events(wav_path, offset=start))
+        events_by_character[character_index].extend(detect_eye_events(wav_path, offset=start))
 
     for character, events in zip(characters, events_by_character):
         character["events"] = sorted(events, key=lambda event: (float(event["t"]), str(event["code"]), not bool(event["down"])))
@@ -424,6 +581,12 @@ def _catalog_outfits_by_slot(catalog: dict[str, Any]) -> dict[str, set[str]]:
             if isinstance(outfit, dict) and outfit.get("name")
         }
         valid_by_slot[slot] = names
+    eyes = {str(name) for name in catalog.get("eyes") or [] if name}
+    if eyes:
+        valid_by_slot["5"] = eyes
+    mouths = {str(name) for name in catalog.get("mouths") or [] if name}
+    if mouths:
+        valid_by_slot["7"] = mouths
     return valid_by_slot
 
 
@@ -432,6 +595,12 @@ def _speaker_from_clip(clip: dict[str, Any]) -> str:
     if "-" in name:
         return name.split("-", 1)[0]
     return name or "split"
+
+
+def _is_outro_effect_clip(clip: dict[str, Any]) -> bool:
+    clip_id = str(clip.get("id") or "").strip()
+    name = str(clip.get("name") or "").strip()
+    return clip_id == "static-disconnect" or name == "effect-static-disconnect"
 
 
 def _validate_show_json(path: Path) -> None:

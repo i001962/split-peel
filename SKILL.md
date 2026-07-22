@@ -62,6 +62,31 @@ Run the end-to-end episode flow:
 split-peel make --template <template.bs> --run-dir runs/<episode_slug> --out outputs/<episode_slug>.bs --duration-sec 60
 ```
 
+Prefer the two-phase flow for creative iteration:
+
+1. Draft and edit `runs/<episode_slug>/script.json`.
+2. Review or adjust overlay manifests and generated PNGs.
+3. Run `build-show` only after dialogue is locked.
+
+`build-show` and `make` synthesize dialogue audio. With the default ElevenLabs provider, rerunning either command can spend money and regenerate every dialogue clip. Do not rerun them for script wording, title card placement, ESPN context, or overlay-only experiments unless the user explicitly wants a fresh voiced package.
+
+Use the audio-safety flags when iterating:
+
+```bash
+split-peel make ... --draft-only
+split-peel build-show ... --reuse-audio-from outputs/<episode_slug>.bs --skip-voice
+```
+
+`--draft-only` writes run artifacts and `script.json` but skips package build, memory write, and hosted voice generation. `--reuse-audio-from` can point at an existing `.bs` or `.bannyshow`. `--skip-voice` must be used for visual-only rebuilds when spending new voice credits is not allowed; missing reusable audio should fail the build.
+
+Dialogue WAVs are cached in `.cache/split-peel/audio/` by default. The cache key includes provider, voice settings, speaker, spoken text, and tone. Do not delete or bypass the cache during repeated episode builds unless the user asks for fresh voice generation.
+
+Use `retime-mouth` when the existing voice audio is acceptable and only mouth/eye timing needs repair:
+
+```bash
+split-peel retime-mouth --template outputs/<episode_slug>.bs --out outputs/<episode_slug>-retimed.bs --overwrite
+```
+
 Run the config-driven Studio pipeline:
 
 ```bash
@@ -79,8 +104,11 @@ When `banny_enabled` is true in the pipeline config, the pipeline validates the 
 - Keep generated dialogue in the structured script shape documented in `README.md`.
 - Prefer manual review between `draft-script` and `build-show` when the user is iterating on jokes, tone, or character direction.
 - Pass `--overwrite-script` only when replacing an existing reviewed script is intentional.
+- Treat `runs/<episode_slug>/script.json` as the handoff file before voice generation. It contains the script, episode metadata, preroll/cold-open data, and outro effect instructions.
+- Treat `outputs/<episode_slug>.bs` and `outputs/<episode_slug>.bannyshow` as the Studio handoff after voice generation. Creator touch-ups in Studio should not require rerunning hosted TTS unless the spoken lines change.
 - Use `characters/default.json` unless the user provides another character file.
 - Use `--no-memory` for isolated tests or one-off builds where callbacks to prior episodes would be undesirable.
+- Use `examples/overlays.final-whistle-gantry.json` for the Final Whistle stadium background and title lockup defaults. Overlay entries can use `includeEpisodeTypes` or `excludeEpisodeTypes`; the title lockup is excluded for `outtake`.
 - Run `banny catalog --json` before choosing Banny wardrobe names or outfit slots. Never guess outfit names.
 - Run `banny validate` before `banny ship`; validation errors block delivery.
 - Preview at least one key frame per major episode beat before treating an mp4 render as final.

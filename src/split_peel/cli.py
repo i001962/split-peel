@@ -18,14 +18,14 @@ from split_peel.espn import (
 )
 from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
-from split_peel.overlays import build_pfp_overlays, load_overlay_manifest
+from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, retime_mouth_events, roundtrip_package, unpack_package
 from split_peel.pipeline import (
     load_pipeline_config,
     run_studio_pipeline,
     write_pipeline_config_template,
 )
-from split_peel.scriptwriter import draft_script
+from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -52,6 +52,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     draft_parser.add_argument("--feed", type=Path, required=True)
     draft_parser.add_argument("--out", type=Path, required=True)
     draft_parser.add_argument("--duration-sec", type=int, default=60)
+    draft_parser.add_argument("--episode-title")
+    draft_parser.add_argument("--episode-type", default="match-event", choices=EPISODE_TYPE_CHOICES)
+    draft_parser.add_argument("--show-name", default="Final Whistle with Split & Peel")
+    draft_parser.add_argument("--tagline", default="The whistle goes, the takes stay loud.")
     draft_parser.add_argument("--match-context", type=Path)
     draft_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
     draft_parser.add_argument("--instructions")
@@ -85,6 +89,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     build_parser.add_argument("--background-gain", type=float)
     build_parser.add_argument("--overlays", type=Path)
     build_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
+    build_parser.add_argument("--reuse-audio-from", type=Path)
+    build_parser.add_argument("--skip-voice", action="store_true")
 
     make_parser = subparsers.add_parser("make", help="Run the first end-to-end smoke pipeline.")
     make_parser.add_argument("--template", type=Path, required=True)
@@ -96,6 +102,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     make_parser.add_argument("--run-dir", type=Path, default=Path("runs/latest"))
     make_parser.add_argument("--out", type=Path, required=True)
     make_parser.add_argument("--duration-sec", type=int, default=60)
+    make_parser.add_argument("--episode-title")
+    make_parser.add_argument("--episode-type", default="match-event", choices=EPISODE_TYPE_CHOICES)
+    make_parser.add_argument("--show-name", default="Final Whistle with Split & Peel")
+    make_parser.add_argument("--tagline", default="The whistle goes, the takes stay loud.")
     make_parser.add_argument("--background-gain", type=float)
     make_parser.add_argument("--overlays", type=Path)
     make_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
@@ -105,6 +115,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     make_parser.add_argument("--memory-dir", type=Path, default=DEFAULT_MEMORY_DIR)
     make_parser.add_argument("--no-memory", action="store_true")
     make_parser.add_argument("--overwrite-script", action="store_true")
+    make_parser.add_argument("--draft-only", "--no-build", dest="draft_only", action="store_true")
+    make_parser.add_argument("--reuse-audio-from", type=Path)
+    make_parser.add_argument("--skip-voice", action="store_true")
 
     pipeline_parser = subparsers.add_parser("studio-pipeline", help="Run a config-driven Banny Studio development pipeline.")
     pipeline_parser.add_argument("--config", type=Path, required=True)
@@ -149,6 +162,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             episode_memory=memory,
             instructions=instructions,
             script_provider=args.script_provider,
+            episode_title=args.episode_title,
+            episode_type=args.episode_type,
+            show_name=args.show_name,
+            tagline=args.tagline,
         )
         write_json(args.out, script)
         print(f"wrote {args.out}")
@@ -182,6 +199,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             background_gain=args.background_gain,
             overlays=args.overlays,
             characters=characters,
+            reuse_audio_from=args.reuse_audio_from,
+            skip_voice=args.skip_voice,
         )
         print(f"wrote {args.out}")
         return 0
@@ -220,14 +239,35 @@ def main(argv: Optional[list[str]] = None) -> int:
             episode_memory=memory,
             instructions=instructions,
             script_provider=args.script_provider,
+            episode_title=args.episode_title,
+            episode_type=args.episode_type,
+            show_name=args.show_name,
+            tagline=args.tagline,
         )
         write_json(script_path, script)
         pfp_overlays = build_pfp_overlays(script, args.run_dir / "pfp-assets")
-        if (pfp_overlays.get("overlays") or []) or overlays_path:
+        key_moment_overlays = build_key_moment_takeover_overlays(script, args.run_dir / "key-moment-assets")
+        generated_overlay_count = len(pfp_overlays.get("overlays") or []) + len(key_moment_overlays.get("overlays") or [])
+        if generated_overlay_count or overlays_path:
             pfp_overlays_path = args.run_dir / "pfp-overlays.json"
-            overlays = _merged_overlay_dicts(load_overlay_manifest(overlays_path), pfp_overlays)
+            overlays = _merged_overlay_dicts(
+                load_overlay_manifest(overlays_path),
+                _merged_overlay_dicts(pfp_overlays.get("overlays") or [], key_moment_overlays),
+            )
             write_json(pfp_overlays_path, overlays)
             overlays_path = pfp_overlays_path
+
+        if args.draft_only:
+            print(f"wrote {feed_path}")
+            if not args.no_espn:
+                print(f"wrote {args.run_dir / 'scoreboard.json'}")
+                print(f"wrote {args.run_dir / 'match_context.json'}")
+                print(f"wrote {args.run_dir / 'espn-overlays.json'}")
+            if overlays_path == args.run_dir / "pfp-overlays.json":
+                print(f"wrote {overlays_path}")
+            print(f"wrote {script_path}")
+            print("skipped build-show (--draft-only)")
+            return 0
 
         memory_path = None if args.no_memory else save_episode_memory(script, args.memory_dir)
         build_show(
@@ -237,6 +277,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             background_gain=args.background_gain,
             overlays=overlays_path,
             characters=characters,
+            reuse_audio_from=args.reuse_audio_from,
+            skip_voice=args.skip_voice,
         )
         print(f"wrote {feed_path}")
         if not args.no_espn:
