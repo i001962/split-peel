@@ -9,6 +9,7 @@ from split_peel.pipeline import (
     build_pipeline_plan,
     load_pipeline_config,
     run_banny_post_build,
+    run_youtube_thumbnail,
     run_youtube_upload,
     run_studio_pipeline,
     write_movie_export_handoff,
@@ -135,10 +136,34 @@ def test_build_pipeline_plan_includes_youtube_stage_when_enabled(tmp_path: Path,
     plan = build_pipeline_plan(config)
 
     assert "youtube-upload" in plan["stages"]
+    assert "generate-youtube-thumbnail" in plan["stages"]
     assert plan["artifacts"]["youtube_upload"] == str(tmp_path / "runs/demo/youtube-upload.json")
+    assert plan["artifacts"]["youtube_thumbnail"] == str(tmp_path / "runs/demo/youtube-thumbnail.png")
     assert config.youtube_title == "Demo Upload"
     assert config.youtube_tags == ("football", "clips")
     assert config.youtube_privacy_status == "private"
+
+
+def test_build_pipeline_plan_can_generate_thumbnail_without_upload(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "pipeline.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "episode_slug": "demo",
+                "template_path": "templates/base.bs",
+                "youtube_generate_thumbnail": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = load_pipeline_config(config_path)
+
+    plan = build_pipeline_plan(config)
+
+    assert "generate-youtube-thumbnail" in plan["stages"]
+    assert "youtube-upload" not in plan["stages"]
+    assert plan["artifacts"]["youtube_thumbnail"] == str(tmp_path / "runs/demo/youtube-thumbnail.png")
 
 
 def test_build_pipeline_plan_uses_empty_feed_stage_when_no_feed(tmp_path: Path, monkeypatch):
@@ -271,6 +296,27 @@ def test_run_youtube_upload_requires_existing_movie(tmp_path: Path, monkeypatch)
 
     with pytest.raises(PipelineError, match="movie file does not exist"):
         run_youtube_upload(config, {"title": "Demo"})
+
+
+def test_run_youtube_thumbnail_writes_run_artifact(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "pipeline.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "episode_slug": "demo",
+                "template_path": "templates/base.bs",
+                "youtube_generate_thumbnail": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = load_pipeline_config(config_path)
+
+    result = run_youtube_thumbnail(config, {"title": "Shopping For A Club"}, {"match": {"shortName": "ARS v PSG"}})
+
+    assert result["path"] == str(tmp_path / "runs/demo/youtube-thumbnail.png")
+    assert (tmp_path / "runs/demo/youtube-thumbnail.png").exists()
 
 
 def test_run_youtube_upload_uses_generated_metadata_and_writes_result(tmp_path: Path, monkeypatch):
@@ -422,3 +468,5 @@ def test_write_pipeline_config_template_roundtrips(tmp_path: Path, monkeypatch):
     assert config.banny_ship is True
     assert config.youtube_upload_enabled is False
     assert config.youtube_token == tmp_path / ".secrets/youtube-token.json"
+    assert config.youtube_generate_thumbnail is False
+    assert config.youtube_brand_lockup == tmp_path / "examples/assets/final-whistle-title.png"

@@ -15,3 +15,8 @@ memory/
 # Large local templates/assets should be copied in as needed, not committed by default.
 templates/*.bs
 templates/*.bannyshow
+
+# Accidental root-level video exports.
+/*.mp4
+/*.mov
+/*.m4v

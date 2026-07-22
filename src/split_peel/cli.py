@@ -27,6 +27,7 @@ from split_peel.pipeline import (
 )
 from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
 from split_peel.youtube import YouTubeUploadMetadata, upload_video
+from split_peel.youtube_assets import DEFAULT_BRAND_LOCKUP, render_youtube_banner, render_youtube_thumbnail
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -141,6 +142,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     youtube_parser.add_argument("--thumbnail", type=Path)
     youtube_parser.add_argument("--out", type=Path)
     youtube_parser.add_argument("--dry-run", action="store_true")
+
+    thumbnail_parser = subparsers.add_parser("generate-youtube-thumbnail", help="Generate a YouTube-ready episode thumbnail.")
+    thumbnail_parser.add_argument("--out", type=Path, required=True)
+    thumbnail_parser.add_argument("--title")
+    thumbnail_parser.add_argument("--subtitle", default="")
+    thumbnail_parser.add_argument("--script", type=Path)
+    thumbnail_parser.add_argument("--match-context", type=Path)
+    thumbnail_parser.add_argument("--background", type=Path)
+    thumbnail_parser.add_argument("--brand-lockup", type=Path, default=DEFAULT_BRAND_LOCKUP)
+
+    banner_parser = subparsers.add_parser("generate-youtube-banner", help="Generate YouTube channel banner art.")
+    banner_parser.add_argument("--out", type=Path, default=Path("outputs/channel-banner.png"))
+    banner_parser.add_argument("--title", default="Final Whistle")
+    banner_parser.add_argument("--subtitle", default="With Split & Peel")
+    banner_parser.add_argument("--background", type=Path)
+    banner_parser.add_argument("--brand-lockup", type=Path, default=DEFAULT_BRAND_LOCKUP)
+    banner_parser.add_argument("--show-safe-area", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -340,6 +358,32 @@ def main(argv: Optional[list[str]] = None) -> int:
             thumbnail_path=args.thumbnail,
             out_path=args.out,
             dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "generate-youtube-thumbnail":
+        script = _read_json(args.script) if args.script else {}
+        match_context = _read_json(args.match_context) if args.match_context else script.get("matchContext")
+        result = render_youtube_thumbnail(
+            args.out,
+            title=args.title or str(script.get("title") or "Final Whistle"),
+            subtitle=args.subtitle,
+            match_context=match_context,
+            background_path=args.background,
+            brand_lockup_path=args.brand_lockup,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "generate-youtube-banner":
+        result = render_youtube_banner(
+            args.out,
+            title=args.title,
+            subtitle=args.subtitle,
+            background_path=args.background,
+            brand_lockup_path=args.brand_lockup,
+            show_safe_area=args.show_safe_area,
         )
         print(json.dumps(result, indent=2))
         return 0

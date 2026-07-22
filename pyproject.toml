@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "split-peel contributors" }]
-dependencies = []
+dependencies = ["Pillow>=9"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

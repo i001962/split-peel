@@ -44,5 +44,8 @@
   "youtube_notify_subscribers": false,
   "youtube_made_for_kids": false,
   "youtube_contains_synthetic_media": null,
-  "youtube_thumbnail": null
+  "youtube_thumbnail": null,
+  "youtube_generate_thumbnail": false,
+  "youtube_thumbnail_background": null,
+  "youtube_brand_lockup": "examples/assets/final-whistle-title.png"
 }

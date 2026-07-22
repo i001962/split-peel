@@ -135,3 +135,26 @@ def test_upload_youtube_dry_run_writes_request_metadata(tmp_path: Path, capsys):
     assert written["request"]["body"]["snippet"]["tags"] == ["football", "final whistle"]
     assert written["request"]["body"]["status"]["privacyStatus"] == "private"
     assert written["request"]["body"]["status"]["selfDeclaredMadeForKids"] is False
+
+
+def test_generate_youtube_thumbnail_command_writes_image(tmp_path: Path, capsys):
+    out = tmp_path / "youtube-thumbnail.png"
+
+    main(["generate-youtube-thumbnail", "--out", str(out), "--title", "Shopping For A Club"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["width"] == 1280
+    assert result["height"] == 720
+    assert out.exists()
+
+
+def test_generate_youtube_banner_command_writes_image(tmp_path: Path, capsys):
+    out = tmp_path / "channel-banner.png"
+
+    main(["generate-youtube-banner", "--out", str(out), "--show-safe-area"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["width"] == 2560
+    assert result["height"] == 1440
+    assert result["safe_area"]["width"] == 1546
+    assert out.exists()

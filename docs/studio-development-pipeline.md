@@ -45,6 +45,7 @@ The command writes:
 - `runs/<episode_slug>/banny-info.json` when Banny CLI integration is enabled
 - `runs/<episode_slug>/preview-*.png` for configured Banny preview frames
 - `outputs/<episode_slug>.mp4` when `banny_ship` is enabled
+- `runs/<episode_slug>/youtube-thumbnail.png` when YouTube thumbnail generation is enabled
 - `runs/<episode_slug>/youtube-upload.json` when YouTube upload is enabled
 
 If `runs/<episode_slug>/script.json` already exists, the pipeline stops before redrafting unless `overwrite_script` is set to `true`.
@@ -177,6 +178,18 @@ Validation errors stop the pipeline. Preview frames and exported movies are adde
 
 The pipeline can upload the finished MP4 as an explicit final delivery step. This is opt-in and runs only after `output_movie` exists.
 
+Generate a YouTube-ready thumbnail without uploading:
+
+```bash
+split-peel generate-youtube-thumbnail \
+  --script runs/<episode_slug>/script.json \
+  --match-context runs/<episode_slug>/match_context.json \
+  --background runs/<episode_slug>/preview-02-000.png \
+  --out runs/<episode_slug>/youtube-thumbnail.png
+```
+
+The thumbnail renderer outputs 1280x720 art and uses the episode title, show lockup, optional match/team context, and optional background or preview frame. When `youtube_upload_enabled` is true and no `youtube_thumbnail` is configured, the pipeline generates `runs/<episode_slug>/youtube-thumbnail.png` automatically and passes it to the upload step.
+
 Standalone upload command:
 
 ```bash
@@ -211,11 +224,25 @@ Pipeline config fields:
   "youtube_notify_subscribers": false,
   "youtube_made_for_kids": false,
   "youtube_contains_synthetic_media": null,
-  "youtube_thumbnail": null
+  "youtube_thumbnail": null,
+  "youtube_generate_thumbnail": false,
+  "youtube_thumbnail_background": null,
+  "youtube_brand_lockup": "examples/assets/final-whistle-title.png"
 }
 ```
 
 When `youtube_title` is omitted, the pipeline uses the script title, then `episode_title`, then `episode_slug`. When no description or description file is configured, it generates a short description from the script title, tagline, and script beats. YouTube does not require a custom thumbnail during upload, so thumbnail generation remains separate; set `youtube_thumbnail` or `--thumbnail` when a reviewed image is ready.
+
+Generate channel banner art separately from episode runs:
+
+```bash
+split-peel generate-youtube-banner \
+  --out outputs/channel-banner.png \
+  --title "Final Whistle" \
+  --subtitle "With Split & Peel"
+```
+
+The banner renderer outputs a 2560x1440 image and keeps critical branding inside the centered 1546x423 safe area so it survives YouTube's mobile, desktop, and TV crops. Use `--show-safe-area` for review copies only; do not upload a guide-marked banner as final art.
 
 The upload command uses YouTube Data API OAuth with the `youtube.upload` scope. Install the optional dependencies before first use:
 

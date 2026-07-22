@@ -96,6 +96,8 @@ split-peel inspect-template --template /path/to/WorldCupAll.bs
 split-peel roundtrip --template /path/to/WorldCupAll.bs --out outputs/roundtrip.bs
 split-peel unpack --template outputs/smoke.bs --out outputs/smoke.bannyshow
 split-peel build-show --template templates/WorldCupAll.bs --script runs/latest/script.json --out outputs/episode.bs
+split-peel generate-youtube-thumbnail --script runs/latest/script.json --out runs/latest/youtube-thumbnail.png
+split-peel generate-youtube-banner --out outputs/channel-banner.png
 split-peel upload-youtube --file outputs/episode.mp4 --title "Final Whistle: Match Preview" --privacy-status private --dry-run
 ```
 
@@ -173,6 +175,16 @@ split-peel unpack \
 Upload a reviewed movie export to YouTube as an explicit final step:
 
 ```bash
+split-peel generate-youtube-thumbnail \
+  --script runs/<episode>/script.json \
+  --match-context runs/<episode>/match_context.json \
+  --background runs/<episode>/preview-02-000.png \
+  --out runs/<episode>/youtube-thumbnail.png
+```
+
+The thumbnail renderer outputs 1280x720 art from the episode title, show lockup, optional match/team context, and optional background or preview frame. When `youtube_upload_enabled` is true and no `youtube_thumbnail` is configured, `studio-pipeline` generates `runs/<episode>/youtube-thumbnail.png` automatically and passes it to upload.
+
+```bash
 split-peel upload-youtube \
   --file outputs/<episode>.mp4 \
   --title "Final Whistle: ENG1 Game Week Preview" \
@@ -193,6 +205,17 @@ pip install 'split-peel[youtube]'
 ```
 
 The upload command sets the YouTube fields the API needs for this workflow: title, description, tags, category, privacy status, subscriber notification preference, and the made-for-kids declaration. The default privacy is `private`, default category is `17` (sports), and `--dry-run` prints/writes the request without authenticating or uploading. A thumbnail is optional in YouTube's upload API; pass `--thumbnail` when a reviewed image is ready.
+
+Generate channel banner art separately from episode runs:
+
+```bash
+split-peel generate-youtube-banner \
+  --out outputs/channel-banner.png \
+  --title "Final Whistle" \
+  --subtitle "With Split & Peel"
+```
+
+The banner renderer outputs 2560x1440 art and keeps critical branding inside the centered 1546x423 safe area for YouTube's mobile, desktop, and TV crops. Add `--show-safe-area` only when making a review copy.
 
 By default, `split-peel make` also fetches the ESPN Premier League scoreboard, normalizes one featured match plus the full ESPN event slate, downloads team logos, extracts ESPN key moments when present, and generates ESPN overlays. Match-event and recap episodes use the featured match logos, score, and key-moment graphics. Game-week-preview episodes use the full `match_context.matches` slate and render paged matchup overlays with logo-v-logo rows, kickoff time, and UTC zone labels. Use `--no-espn` to disable that source.
 

@@ -29,6 +29,7 @@ from split_peel.youtube import (
     build_youtube_description,
     upload_video,
 )
+from split_peel.youtube_assets import DEFAULT_BRAND_LOCKUP, render_youtube_thumbnail
 
 
 class PipelineError(RuntimeError):
@@ -85,6 +86,9 @@ class PipelineConfig:
     youtube_made_for_kids: bool = False
     youtube_contains_synthetic_media: Optional[bool] = None
     youtube_thumbnail: Optional[Path] = None
+    youtube_generate_thumbnail: bool = False
+    youtube_thumbnail_background: Optional[Path] = None
+    youtube_brand_lockup: Path = DEFAULT_BRAND_LOCKUP
 
 
 def load_pipeline_config(path: Path) -> PipelineConfig:
@@ -146,6 +150,9 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         youtube_made_for_kids=bool(payload.get("youtube_made_for_kids", False)),
         youtube_contains_synthetic_media=_optional_bool(payload.get("youtube_contains_synthetic_media")),
         youtube_thumbnail=_optional_path(payload.get("youtube_thumbnail"), base_dir),
+        youtube_generate_thumbnail=bool(payload.get("youtube_generate_thumbnail", False)),
+        youtube_thumbnail_background=_optional_path(payload.get("youtube_thumbnail_background"), base_dir),
+        youtube_brand_lockup=_path(payload.get("youtube_brand_lockup") or DEFAULT_BRAND_LOCKUP, base_dir),
     )
 
 
@@ -198,6 +205,9 @@ def write_pipeline_config_template(path: Path) -> None:
         "youtube_made_for_kids": False,
         "youtube_contains_synthetic_media": None,
         "youtube_thumbnail": None,
+        "youtube_generate_thumbnail": False,
+        "youtube_thumbnail_background": None,
+        "youtube_brand_lockup": str(DEFAULT_BRAND_LOCKUP),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -237,6 +247,8 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             artifacts["output_movie"] = str(config.output_movie)
     if config.youtube_upload_enabled and not config.draft_only:
         artifacts["youtube_upload"] = str(config.run_dir / "youtube-upload.json")
+    if _should_generate_youtube_thumbnail(config):
+        artifacts["youtube_thumbnail"] = str(config.run_dir / "youtube-thumbnail.png")
 
     return {
         "episode_slug": config.episode_slug,
@@ -261,6 +273,7 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             "draft-script",
             *([] if config.draft_only else ["build-show", "unpack", *_banny_stages(config)]),
             *([] if config.draft_only else ["write-movie-export-handoff", "write-studio-qa-checklist"]),
+            *([] if not _should_generate_youtube_thumbnail(config) else ["generate-youtube-thumbnail"]),
             *([] if config.draft_only or not config.youtube_upload_enabled else ["youtube-upload"]),
             "write-pipeline-manifest",
         ],
@@ -370,7 +383,9 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     handoff_path = config.run_dir / "movie-export-handoff.md"
     write_studio_qa_checklist(config, qa_path, banny_result=banny_result)
     write_movie_export_handoff(config, handoff_path, banny_result=banny_result)
-    youtube_result = run_youtube_upload(config, script) if config.youtube_upload_enabled else None
+    thumbnail_result = run_youtube_thumbnail(config, script, match_context) if _should_generate_youtube_thumbnail(config) else None
+    upload_thumbnail = Path(thumbnail_result["path"]) if thumbnail_result else config.youtube_thumbnail
+    youtube_result = run_youtube_upload(config, script, thumbnail_path=upload_thumbnail) if config.youtube_upload_enabled else None
 
     manifest = {
         **plan,
@@ -379,6 +394,7 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         "final_overlays": str(overlays_path) if overlays_path else None,
         "movie_export_path": str(config.output_movie),
         "banny": banny_result,
+        "youtube_thumbnail": thumbnail_result,
         "youtube": youtube_result,
         "delivery_status": _delivery_status(banny_result, youtube_result),
         "status": "ready-for-studio-qa",
@@ -387,7 +403,28 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     return manifest
 
 
-def run_youtube_upload(config: PipelineConfig, script: dict[str, Any]) -> dict[str, Any]:
+def run_youtube_thumbnail(
+    config: PipelineConfig,
+    script: dict[str, Any],
+    match_context: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    background_path = config.youtube_thumbnail_background or _first_preview_path(config)
+    return render_youtube_thumbnail(
+        config.run_dir / "youtube-thumbnail.png",
+        title=_youtube_title(config, script),
+        subtitle=_youtube_thumbnail_subtitle(config, match_context),
+        match_context=match_context or {"match": script.get("match")},
+        background_path=background_path,
+        brand_lockup_path=config.youtube_brand_lockup,
+    )
+
+
+def run_youtube_upload(
+    config: PipelineConfig,
+    script: dict[str, Any],
+    *,
+    thumbnail_path: Optional[Path] = None,
+) -> dict[str, Any]:
     if not config.output_movie.exists():
         raise PipelineError(f"YouTube upload is enabled but movie file does not exist: {config.output_movie}")
     title = _youtube_title(config, script)
@@ -407,7 +444,7 @@ def run_youtube_upload(config: PipelineConfig, script: dict[str, Any]) -> dict[s
             ),
             credentials_path=config.youtube_credentials,
             token_path=config.youtube_token,
-            thumbnail_path=config.youtube_thumbnail,
+            thumbnail_path=thumbnail_path,
             out_path=config.run_dir / "youtube-upload.json",
         )
     except YouTubeUploadError as error:
@@ -634,6 +671,26 @@ def _youtube_description(config: PipelineConfig, script: dict[str, Any]) -> str:
     if configured:
         return configured
     return build_youtube_description(script, show_name=config.show_name, tagline=config.tagline)
+
+
+def _youtube_thumbnail_subtitle(config: PipelineConfig, match_context: Optional[dict[str, Any]]) -> str:
+    match = (match_context or {}).get("match") or {}
+    if match:
+        return str(match.get("shortName") or match.get("name") or "").strip()
+    return config.show_name
+
+
+def _should_generate_youtube_thumbnail(config: PipelineConfig) -> bool:
+    if config.draft_only:
+        return False
+    return config.youtube_generate_thumbnail or (config.youtube_upload_enabled and config.youtube_thumbnail is None)
+
+
+def _first_preview_path(config: PipelineConfig) -> Optional[Path]:
+    if not config.banny_preview_times:
+        return None
+    path = _preview_path(config, config.banny_preview_times[0])
+    return path if path.exists() else None
 
 
 def _delivery_status(banny_result: Optional[dict[str, Any]], youtube_result: Optional[dict[str, Any]]) -> str:
