@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -341,6 +342,13 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "upload-youtube":
         description = _instructions(args.description, args.description_file) or ""
+
+        def report_progress(label: str, progress: Optional[float]) -> None:
+            if progress is None:
+                print(f"youtube {label}: working", file=sys.stderr)
+                return
+            print(f"youtube {label}: {progress * 100:.1f}%", file=sys.stderr)
+
         result = upload_video(
             args.file,
             YouTubeUploadMetadata(
@@ -358,6 +366,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             thumbnail_path=args.thumbnail,
             out_path=args.out,
             dry_run=args.dry_run,
+            progress_callback=report_progress,
         )
         print(json.dumps(result, indent=2))
         return 0

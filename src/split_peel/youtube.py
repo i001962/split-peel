@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import mimetypes
+import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from split_peel.feed import write_json
 
@@ -39,6 +41,7 @@ def upload_video(
     out_path: Optional[Path] = None,
     dry_run: bool = False,
     service: Any = None,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
 ) -> dict[str, Any]:
     _validate_video_path(video_path)
     _validate_metadata(metadata)
@@ -67,15 +70,25 @@ def upload_video(
             write_json(out_path, result)
         return result
 
-    youtube = service or _build_youtube_service(credentials_path, token_path)
-    response = _execute_video_insert(youtube, video_path, body, metadata.notify_subscribers)
+    if service:
+        response = _execute_video_insert(service, video_path, body, metadata.notify_subscribers, progress_callback)
+    else:
+        creds = _load_youtube_credentials(credentials_path, token_path)
+        response = _execute_video_insert_requests(creds, video_path, body, metadata.notify_subscribers, progress_callback)
     video_id = str(response.get("id") or "")
     if not video_id:
         raise YouTubeUploadError("YouTube upload response did not include a video id")
 
     thumbnail_response = None
+    thumbnail_error = None
     if thumbnail_path:
-        thumbnail_response = _execute_thumbnail_set(youtube, video_id, thumbnail_path)
+        try:
+            if service:
+                thumbnail_response = _execute_thumbnail_set(service, video_id, thumbnail_path, progress_callback)
+            else:
+                thumbnail_response = _execute_thumbnail_set_requests(creds, video_id, thumbnail_path, progress_callback)
+        except YouTubeUploadError as error:
+            thumbnail_error = str(error)
 
     result = {
         "dry_run": False,
@@ -85,6 +98,7 @@ def upload_video(
         "request": request,
         "response": response,
         "thumbnail_response": thumbnail_response,
+        "thumbnail_error": thumbnail_error,
     }
     if out_path:
         write_json(out_path, result)
@@ -147,10 +161,23 @@ def _video_resource(metadata: YouTubeUploadMetadata) -> dict[str, Any]:
 
 def _build_youtube_service(credentials_path: Optional[Path], token_path: Optional[Path]) -> Any:
     try:
+        from googleapiclient.discovery import build
+    except ImportError as error:
+        raise YouTubeUploadError(
+            "YouTube upload requires optional Google API libraries. "
+            "Install them with `pip install 'split-peel[youtube]'` or install "
+            "`google-api-python-client google-auth-oauthlib google-auth-httplib2`."
+        ) from error
+
+    creds = _load_youtube_credentials(credentials_path, token_path)
+    return build("youtube", "v3", credentials=creds)
+
+
+def _load_youtube_credentials(credentials_path: Optional[Path], token_path: Optional[Path]) -> Any:
+    try:
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
-        from googleapiclient.discovery import build
     except ImportError as error:
         raise YouTubeUploadError(
             "YouTube upload requires optional Google API libraries. "
@@ -163,20 +190,32 @@ def _build_youtube_service(credentials_path: Optional[Path], token_path: Optiona
     if token_file.exists():
         creds = Credentials.from_authorized_user_file(str(token_file), [YOUTUBE_UPLOAD_SCOPE])
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except Exception as error:
+            raise YouTubeUploadError(_network_error_message("refreshing the YouTube OAuth token", error)) from error
     if not creds or not creds.valid:
         if not credentials_path:
             raise YouTubeUploadError("YouTube credentials path is required for first-time authorization")
         if not credentials_path.exists():
             raise YouTubeUploadError(f"YouTube credentials file does not exist: {credentials_path}")
         flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), [YOUTUBE_UPLOAD_SCOPE])
-        creds = flow.run_local_server(port=0)
+        try:
+            creds = flow.run_local_server(port=0)
+        except Exception as error:
+            raise YouTubeUploadError(_network_error_message("authorizing the YouTube uploader", error)) from error
     token_file.parent.mkdir(parents=True, exist_ok=True)
     token_file.write_text(creds.to_json(), encoding="utf-8")
-    return build("youtube", "v3", credentials=creds)
+    return creds
 
 
-def _execute_video_insert(youtube: Any, video_path: Path, body: dict[str, Any], notify_subscribers: bool) -> dict[str, Any]:
+def _execute_video_insert(
+    youtube: Any,
+    video_path: Path,
+    body: dict[str, Any],
+    notify_subscribers: bool,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
+) -> dict[str, Any]:
     try:
         from googleapiclient.http import MediaFileUpload
     except ImportError as error:
@@ -190,10 +229,15 @@ def _execute_video_insert(youtube: Any, video_path: Path, body: dict[str, Any], 
         media_body=MediaFileUpload(str(video_path), mimetype="video/*", resumable=True),
         notifySubscribers=notify_subscribers,
     )
-    return request.execute()
+    return _execute_resumable_request(request, "video", progress_callback)
 
 
-def _execute_thumbnail_set(youtube: Any, video_id: str, thumbnail_path: Path) -> dict[str, Any]:
+def _execute_thumbnail_set(
+    youtube: Any,
+    video_id: str,
+    thumbnail_path: Path,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
+) -> dict[str, Any]:
     try:
         from googleapiclient.http import MediaFileUpload
     except ImportError as error:
@@ -201,7 +245,185 @@ def _execute_thumbnail_set(youtube: Any, video_id: str, thumbnail_path: Path) ->
             "YouTube thumbnail upload requires `google-api-python-client`; install `split-peel[youtube]`."
         ) from error
 
-    return youtube.thumbnails().set(
+    request = youtube.thumbnails().set(
         videoId=video_id,
         media_body=MediaFileUpload(str(thumbnail_path), mimetype="image/*", resumable=True),
-    ).execute()
+    )
+    return _execute_resumable_request(request, "thumbnail", progress_callback)
+
+
+def _execute_video_insert_requests(
+    creds: Any,
+    video_path: Path,
+    body: dict[str, Any],
+    notify_subscribers: bool,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
+) -> dict[str, Any]:
+    try:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+    except ImportError as error:
+        raise YouTubeUploadError("YouTube upload requires `requests`; install `split-peel[youtube]`.") from error
+
+    size = video_path.stat().st_size
+    mime_type = mimetypes.guess_type(str(video_path))[0] or "video/mp4"
+    _force_ipv4_if_requested()
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=_requests_retry_policy()))
+    headers = _requests_auth_headers(creds)
+    headers.update(
+        {
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Length": str(size),
+            "X-Upload-Content-Type": mime_type,
+        }
+    )
+    params = {
+        "uploadType": "resumable",
+        "part": "snippet,status",
+        "notifySubscribers": str(notify_subscribers).lower(),
+    }
+    try:
+        start_response = session.post(
+            "https://www.googleapis.com/upload/youtube/v3/videos",
+            params=params,
+            headers=headers,
+            json=body,
+            timeout=60,
+        )
+        _raise_for_youtube_response(start_response, "starting the YouTube video upload")
+        upload_url = start_response.headers.get("Location")
+        if not upload_url:
+            raise YouTubeUploadError("YouTube upload did not return a resumable upload URL")
+
+        upload_headers = {
+            "Authorization": f"Bearer {creds.token}",
+            "Content-Type": mime_type,
+            "Content-Length": str(size),
+            "Content-Range": f"bytes 0-{size - 1}/{size}",
+        }
+        if progress_callback:
+            progress_callback("video", 0.0)
+        with video_path.open("rb") as handle:
+            upload_response = session.put(
+                upload_url,
+                headers=upload_headers,
+                data=handle,
+                timeout=(60, 600),
+            )
+        _raise_for_youtube_response(upload_response, "uploading the YouTube video")
+        if progress_callback:
+            progress_callback("video", 1.0)
+        return upload_response.json()
+    except YouTubeUploadError:
+        raise
+    except Exception as error:
+        raise YouTubeUploadError(_network_error_message("uploading the YouTube video", error)) from error
+
+
+def _execute_thumbnail_set_requests(
+    creds: Any,
+    video_id: str,
+    thumbnail_path: Path,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
+) -> dict[str, Any]:
+    try:
+        import requests
+        from requests.adapters import HTTPAdapter
+    except ImportError as error:
+        raise YouTubeUploadError("YouTube thumbnail upload requires `requests`; install `split-peel[youtube]`.") from error
+
+    size = thumbnail_path.stat().st_size
+    mime_type = mimetypes.guess_type(str(thumbnail_path))[0] or "image/png"
+    _force_ipv4_if_requested()
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=_requests_retry_policy()))
+    headers = _requests_auth_headers(creds)
+    headers.update({"Content-Type": mime_type, "Content-Length": str(size)})
+    try:
+        if progress_callback:
+            progress_callback("thumbnail", 0.0)
+        with thumbnail_path.open("rb") as handle:
+            response = session.post(
+                "https://www.googleapis.com/upload/youtube/v3/thumbnails/set",
+                params={"videoId": video_id, "uploadType": "media"},
+                headers=headers,
+                data=handle,
+                timeout=(60, 300),
+            )
+        _raise_for_youtube_response(response, "uploading the YouTube thumbnail")
+        if progress_callback:
+            progress_callback("thumbnail", 1.0)
+        return response.json()
+    except YouTubeUploadError:
+        raise
+    except Exception as error:
+        raise YouTubeUploadError(_network_error_message("uploading the YouTube thumbnail", error)) from error
+
+
+def _requests_auth_headers(creds: Any) -> dict[str, str]:
+    return {"Authorization": f"Bearer {creds.token}"}
+
+
+def _requests_retry_policy() -> Any:
+    from urllib3.util.retry import Retry
+
+    return Retry(
+        total=5,
+        connect=5,
+        read=5,
+        status=5,
+        backoff_factor=1,
+        status_forcelist=(500, 502, 503, 504),
+        allowed_methods=None,
+    )
+
+
+def _force_ipv4_if_requested() -> None:
+    if os.environ.get("SPLIT_PEEL_FORCE_IPV4", "").lower() not in {"1", "true", "yes", "on"}:
+        return
+    import socket
+
+    if getattr(socket, "_split_peel_ipv4_forced", False):
+        return
+    original_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo_ipv4(host: Any, port: Any, family: int = 0, type: int = 0, proto: int = 0, flags: int = 0) -> Any:
+        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = getaddrinfo_ipv4
+    socket._split_peel_ipv4_forced = True
+
+
+def _raise_for_youtube_response(response: Any, action: str) -> None:
+    if 200 <= response.status_code < 300:
+        return
+    body = response.text[:1000] if getattr(response, "text", None) else ""
+    raise YouTubeUploadError(f"Error while {action}: HTTP {response.status_code} {body}".strip())
+
+
+def _execute_resumable_request(
+    request: Any,
+    label: str,
+    progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
+) -> dict[str, Any]:
+    response = None
+    while response is None:
+        try:
+            status, response = request.next_chunk()
+        except AttributeError:
+            return request.execute()
+        except Exception as error:
+            raise YouTubeUploadError(_network_error_message(f"uploading the YouTube {label}", error)) from error
+        if status and progress_callback:
+            progress_callback(label, float(status.progress()))
+    return response
+
+
+def _network_error_message(action: str, error: Exception) -> str:
+    return (
+        f"Error while {action}: {error}. "
+        "If this is an SSL or connection error, retry from a current Python virtualenv "
+        "or update your Python/OpenSSL/certifi stack."
+    )

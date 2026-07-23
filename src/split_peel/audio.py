@@ -320,7 +320,7 @@ def _with_line_delivery(base_instructions: str, tone: str) -> str:
 
 def _elevenlabs_text_with_delivery(text: str, tone: str) -> str:
     tone = " ".join(tone.split()).strip()
-    if not tone:
+    if not tone or os.environ.get("SPLIT_PEEL_ELEVENLABS_INLINE_TONE", "").strip().lower() not in {"1", "true", "yes", "on"}:
         return text
     return f"[{tone}] {text}"
 

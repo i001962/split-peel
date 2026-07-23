@@ -164,7 +164,7 @@ def test_elevenlabs_tts_payload_includes_voice_and_delivery_tags(tmp_path, monke
 
     assert "/v1/text-to-speech/voice-peel" in captured["url"]
     assert captured["body"]["model_id"] == "eleven_v3"
-    assert captured["body"]["text"] == "[gasping, then shouting] He is through!"
+    assert captured["body"]["text"] == "He is through!"
 
 
 def test_detect_mouth_events_tracks_speech_bursts_with_lead(tmp_path: Path, monkeypatch):
