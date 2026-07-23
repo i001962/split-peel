@@ -53,6 +53,7 @@ class VoiceClip:
     duration: float
     mouth_events: list[dict[str, object]]
     eye_events: list[dict[str, object]] = field(default_factory=list)
+    line_id: str = ""
 
 
 def local_tts_available() -> bool:

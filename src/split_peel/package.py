@@ -11,22 +11,114 @@ import zipfile
 from pathlib import Path
 from typing import Any, Optional
 
+from split_peel.asset_registry import copy_registry_assets, load_asset_registry, scene_preset
 from split_peel.audio import VoiceClip, detect_eye_events, detect_mouth_events, synthesize_dialogue
 from split_peel.characters import character_ids, character_map
 from split_peel.motion import SPEAKER_CHARACTER_INDEX, build_character_events
 from split_peel.overlays import apply_overlays, load_overlay_manifest
+from split_peel.performance_plan import apply_performance_plan, load_performance_plan
+from split_peel.voice_manifest import copy_manifest_audio, voice_clips_from_manifest
 
 
 class BannyPackageError(RuntimeError):
     pass
 
 
+def write_starter_show(out: Path, character_count: int = 2, overwrite: bool = False) -> None:
+    if out.exists():
+        if not overwrite:
+            raise BannyPackageError(f"{out} already exists; pass --overwrite to replace it")
+        if out.is_dir():
+            shutil.rmtree(out)
+        else:
+            out.unlink()
+
+    count = max(1, min(4, int(character_count)))
+    bodies = ["original", "original", "alien", "orange"]
+    characters = []
+    for index in range(count):
+        x = 0.5 if count == 1 else 0.25 + 0.5 * index / (count - 1)
+        default_names = ["Split", "Peel", "Banny 3", "Banny 4"]
+        characters.append(
+            {
+                "body": bodies[index % len(bodies)],
+                "x": round(x, 3),
+                "depth": 0,
+                "size": 2,
+                "face": 1 if x <= 0.5 else -1,
+                "baseOutfit": {},
+                "subs": [],
+                "clips": [],
+                "voicePitch": 0,
+                "voiceSpeed": 1,
+                "events": [],
+                "reactions": [],
+                "armedGroups": ["move", "depth", "tilt", "talk", "blink", "jump", "spin", "zoom"],
+                "name": default_names[index],
+                "trackFx": {
+                    "gain": 1,
+                    "low": 0,
+                    "mid": 0,
+                    "high": 0,
+                    "reverb": 0,
+                    "pan": "follow",
+                },
+                "speed": 320,
+                "rotationSpeed": 90,
+                "rotationPivot": None,
+                "wobble": 7,
+                "hidden": False,
+                "locked": False,
+                "solo": False,
+                "presence": [],
+            }
+        )
+
+    show = {
+        "version": 3,
+        "assets": [],
+        "settings": {"activeScene": 0, "lightSize": 0, "frameW": 16, "frameH": 9},
+        "show": [{"sceneID": "", "name": "Starter", "from": 0, "to": 1}],
+        "stage": {
+            "characters": characters,
+            "reactionLibrary": [],
+            "audioTracks": [{"id": "dialogue", "name": "Dialogue", "fx": _default_track_fx(), "clips": [], "cues": [], "hidden": False, "presence": []}],
+            "imageTracks": [],
+            "backgroundTracks": [],
+            "lightTracks": [],
+            "lights": [],
+            "cropAnchors": [],
+            "gScale": 0.6,
+            "gravity": 1,
+            "gSize": 1,
+            "rowOrder": [],
+        },
+    }
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="split-peel-starter-") as tmp:
+        tmp_path = Path(tmp)
+        (tmp_path / "show.json").write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        _write_package_output(tmp_path, out)
+
+
+def _default_track_fx() -> dict[str, Any]:
+    return {"gain": 1, "low": 0, "mid": 0, "high": 0, "reverb": 0, "pan": "follow"}
+
+
 def inspect_package(template: Path) -> dict[str, Any]:
-    with zipfile.ZipFile(template) as archive:
-        names = archive.namelist()
-        if "show.json" not in names:
+    if template.is_dir():
+        show_path = template / "show.json"
+        if not show_path.exists():
             raise BannyPackageError(f"{template} does not contain show.json")
-        show = json.loads(archive.read("show.json").decode("utf-8"))
+        names = [str(path.relative_to(template)) for path in template.rglob("*") if path.is_file()]
+        show = json.loads(show_path.read_text(encoding="utf-8"))
+    else:
+        with zipfile.ZipFile(template) as archive:
+            names = archive.namelist()
+            if "show.json" not in names:
+                raise BannyPackageError(f"{template} does not contain show.json")
+            show = json.loads(archive.read("show.json").decode("utf-8"))
 
     stage = show.get("stage") or {}
     return {
@@ -44,8 +136,7 @@ def roundtrip_package(template: Path, out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="split-peel-") as tmp:
         tmp_path = Path(tmp)
-        with zipfile.ZipFile(template) as archive:
-            archive.extractall(tmp_path)
+        _copy_package_to_dir(template, tmp_path)
         _validate_show_json(tmp_path / "show.json")
         _zip_directory(tmp_path, out)
 
@@ -57,8 +148,7 @@ def unpack_package(template: Path, out: Path, overwrite: bool = False) -> None:
         shutil.rmtree(out)
 
     out.mkdir(parents=True)
-    with zipfile.ZipFile(template) as archive:
-        archive.extractall(out)
+    _copy_package_to_dir(template, out)
     _validate_show_json(out / "show.json")
 
 
@@ -110,12 +200,13 @@ def build_show(
     characters: Optional[dict[str, Any]] = None,
     reuse_audio_from: Optional[Path] = None,
     skip_voice: bool = False,
+    voice_manifest: Optional[Path] = None,
+    performance_plan: Optional[Path] = None,
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="split-peel-") as tmp:
         tmp_path = Path(tmp)
-        with zipfile.ZipFile(template) as archive:
-            archive.extractall(tmp_path)
+        _copy_package_to_dir(template, tmp_path)
         _validate_show_json(tmp_path / "show.json")
         reuse_audio_dirs = _reuse_audio_dirs(tmp_path, reuse_audio_from, include_template=skip_voice)
 
@@ -129,10 +220,52 @@ def build_show(
                 characters=characters,
                 reuse_audio_dirs=reuse_audio_dirs,
                 skip_voice=skip_voice,
+                voice_manifest_path=voice_manifest,
+                performance_plan_path=performance_plan,
             )
 
         shutil.rmtree(tmp_path / "_reuse_audio", ignore_errors=True)
-        _zip_directory(tmp_path, out)
+        _write_package_output(tmp_path, out)
+
+
+def build_show_from_registry(
+    registry_path: Path,
+    script: Path,
+    out: Path,
+    scene_preset_id: str = "default",
+    background_gain: Optional[float] = None,
+    overlays: Optional[Path] = None,
+    characters: Optional[dict[str, Any]] = None,
+    voice_manifest: Optional[Path] = None,
+    performance_plan: Optional[Path] = None,
+) -> None:
+    registry = load_asset_registry(registry_path)
+    preset = scene_preset(registry, scene_preset_id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="split-peel-compose-") as tmp:
+        tmp_path = Path(tmp)
+        show = {
+            "version": 3,
+            "assets": registry.get("assets") or [],
+            "settings": preset.get("settings") or {"activeScene": 0, "lightSize": 0, "frameW": 16, "frameH": 9},
+            "show": preset.get("show") or [{"sceneID": "", "name": str(preset.get("name") or scene_preset_id), "from": 0, "to": 1}],
+            "stage": preset.get("stage") or {},
+        }
+        (tmp_path / "show.json").write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        copy_registry_assets(registry_path, registry, tmp_path / "assets")
+        _validate_show_json(tmp_path / "show.json")
+        payload = json.loads(script.read_text(encoding="utf-8"))
+        _apply_script_to_package(
+            tmp_path,
+            payload,
+            background_gain=background_gain,
+            overlays_path=overlays,
+            characters=characters,
+            voice_manifest_path=voice_manifest,
+            performance_plan_path=performance_plan,
+            skip_voice=bool(voice_manifest),
+        )
+        _write_package_output(tmp_path, out)
 
 
 def _apply_script_to_package(
@@ -143,6 +276,8 @@ def _apply_script_to_package(
     characters: Optional[dict[str, Any]] = None,
     reuse_audio_dirs: Optional[list[Path]] = None,
     skip_voice: bool = False,
+    voice_manifest_path: Optional[Path] = None,
+    performance_plan_path: Optional[Path] = None,
 ) -> None:
     dialogue = script.get("dialogue")
     if not isinstance(dialogue, list):
@@ -155,13 +290,17 @@ def _apply_script_to_package(
         raise BannyPackageError("show.json is missing stage")
 
     audio_dir = package_dir / "audio"
-    clips = synthesize_dialogue(
-        dialogue,
-        audio_dir,
-        characters=characters,
-        reuse_audio_dirs=reuse_audio_dirs,
-        skip_voice=skip_voice,
-    )
+    if voice_manifest_path:
+        copy_manifest_audio(voice_manifest_path, audio_dir)
+        clips = voice_clips_from_manifest(voice_manifest_path)
+    else:
+        clips = synthesize_dialogue(
+            dialogue,
+            audio_dir,
+            characters=characters,
+            reuse_audio_dirs=reuse_audio_dirs,
+            skip_voice=skip_voice,
+        )
     if not clips:
         raise BannyPackageError("script did not produce any voice clips")
 
@@ -173,12 +312,41 @@ def _apply_script_to_package(
     duration = max(dialogue_end, effect_end) + 1.0
     _replace_character_events(stage, clips, duration)
     _replace_character_subtitles(stage, clips)
+    performance_end = apply_performance_plan(stage, load_performance_plan(performance_plan_path), voice_manifest_path)
+    if performance_end:
+        duration = max(duration, performance_end + 1.0)
     _extend_show_duration(show, duration)
     _trim_timeline_to_duration(stage, duration)
     apply_overlays(package_dir, show, load_overlay_manifest(overlays_path), duration, episode_type=script.get("episodeType"))
     _remove_unreferenced_audio(package_dir, stage)
 
     show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _copy_package_to_dir(source: Path, destination: Path) -> None:
+    if source.is_dir():
+        for item in source.iterdir():
+            target = destination / item.name
+            if item.is_dir():
+                shutil.copytree(item, target)
+            else:
+                shutil.copy2(item, target)
+        return
+
+    with zipfile.ZipFile(source) as archive:
+        archive.extractall(destination)
+
+
+def _write_package_output(package_dir: Path, out: Path) -> None:
+    if out.exists():
+        if out.is_dir():
+            shutil.rmtree(out)
+        else:
+            out.unlink()
+    if out.suffix == ".bannyshow":
+        shutil.copytree(package_dir, out)
+        return
+    _zip_directory(package_dir, out)
 
 
 def _reuse_audio_dirs(package_dir: Path, reuse_audio_from: Optional[Path], include_template: bool = False) -> list[Path]:

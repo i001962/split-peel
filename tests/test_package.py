@@ -16,6 +16,7 @@ from split_peel.package import (
     retime_mouth_events,
     roundtrip_package,
     unpack_package,
+    write_starter_show,
 )
 from split_peel.audio import VoiceClip
 from split_peel.package_ids import make_id
@@ -64,6 +65,21 @@ def test_unpack_package_extracts_show_folder(tmp_path: Path):
 
     assert json.loads((output / "show.json").read_text(encoding="utf-8")) == show
     assert (output / "assets" / "background.png").exists()
+
+
+def test_write_starter_show_creates_editable_bannyshow(tmp_path: Path):
+    output = tmp_path / "starter.bannyshow"
+
+    write_starter_show(output, character_count=2)
+
+    show = json.loads((output / "show.json").read_text(encoding="utf-8"))
+    assert show["version"] == 3
+    assert show["stage"]["characters"][0]["name"] == "Split"
+    assert show["stage"]["characters"][1]["name"] == "Peel"
+    assert show["stage"]["characters"][0]["armedGroups"] == ["move", "depth", "tilt", "talk", "blink", "jump", "spin", "zoom"]
+    assert show["stage"]["characters"][0]["size"] == 2
+    assert show["stage"]["characters"][1]["size"] == 2
+    assert show["stage"]["audioTracks"][0]["name"] == "Dialogue"
 
 
 def test_set_background_audio_gain_updates_tracks_and_clips():
@@ -236,6 +252,189 @@ def test_build_show_reuses_audio_from_existing_package_when_skip_voice(tmp_path:
     assert f"audio/{clip_id}.wav" in names
     assert "_reuse_audio" not in "\n".join(names)
     assert rendered["stage"]["audioTracks"][0]["clips"][0]["id"] == clip_id
+
+
+def test_build_show_uses_voice_manifest_without_synthesizing(tmp_path: Path, monkeypatch):
+    template = tmp_path / "template.bannyshow"
+    audio_source = tmp_path / "voice" / "audio"
+    script_path = tmp_path / "script.json"
+    manifest_path = tmp_path / "voice-manifest.json"
+    output = tmp_path / "output.bs"
+    clip_id = "dialogue-manifest-one"
+    template.mkdir()
+    (template / "show.json").write_text(
+        json.dumps(
+            {
+                "show": [{"from": 0, "to": 5}],
+                "assets": [],
+                "stage": {
+                    "audioTracks": [{"clips": []}],
+                    "backgroundTracks": [],
+                    "characters": [{"events": [], "subs": []}, {"events": [], "subs": []}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    audio_source.mkdir(parents=True)
+    _write_test_wav(audio_source / f"{clip_id}.wav", [(0.0, 0.35, 7000)])
+    script_path.write_text(
+        json.dumps({"dialogue": [{"id": "split-open", "speaker": "split", "line": "Manifest line."}]}),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "script_path": "script.json",
+                "audio_dir": "voice/audio",
+                "clips": [
+                    {
+                        "line_id": "split-open",
+                        "line_index": 0,
+                        "speaker": "split",
+                        "text": "Manifest line.",
+                        "tone": "",
+                        "text_hash": "abc",
+                        "audio_id": clip_id,
+                        "start": 0.5,
+                        "duration": 0.35,
+                        "path": f"voice/audio/{clip_id}.wav",
+                        "mouth_events": [{"code": "KeyM", "down": True, "t": 0.52}],
+                        "eye_events": [{"code": "Comma", "down": True, "t": 0.55}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_synthesize(*args, **kwargs):
+        raise AssertionError("voice manifest builds must not synthesize")
+
+    monkeypatch.setattr("split_peel.package.synthesize_dialogue", fail_synthesize)
+
+    build_show(template, script_path, output, voice_manifest=manifest_path)
+
+    with zipfile.ZipFile(output) as archive:
+        rendered = json.loads(archive.read("show.json"))
+        names = archive.namelist()
+
+    assert f"audio/{clip_id}.wav" in names
+    assert rendered["stage"]["audioTracks"][0]["clips"][0]["id"] == clip_id
+    assert rendered["stage"]["characters"][0]["subs"][0]["text"] == "Manifest line."
+
+
+def test_build_show_applies_script_anchored_reaction_and_camera_plan(tmp_path: Path):
+    template = tmp_path / "template.bannyshow"
+    audio_source = tmp_path / "voice" / "audio"
+    script_path = tmp_path / "script.json"
+    manifest_path = tmp_path / "voice-manifest.json"
+    plan_path = tmp_path / "performance-plan.json"
+    output = tmp_path / "output.bs"
+    clip_id = "dialogue-reaction-one"
+    template.mkdir()
+    (template / "show.json").write_text(
+        json.dumps(
+            {
+                "show": [{"from": 0, "to": 5}],
+                "assets": [{"id": "studio-bg", "name": "Studio", "kind": "image", "file": "studio.png"}],
+                "stage": {
+                    "audioTracks": [{"clips": []}],
+                    "backgroundTracks": [
+                        {
+                            "id": "background",
+                            "name": "Background",
+                            "hidden": False,
+                            "presence": [],
+                            "cues": [{"id": "bg", "assetID": "studio-bg", "start": 0, "dur": 10, "crop": "cover"}],
+                        }
+                    ],
+                    "characters": [
+                        {"name": "Split", "events": [], "subs": []},
+                        {"name": "Peel", "events": [], "subs": []},
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    audio_source.mkdir(parents=True)
+    _write_test_wav(audio_source / f"{clip_id}.wav", [(0.0, 0.35, 7000)])
+    script_path.write_text(
+        json.dumps({"dialogue": [{"id": "peel-shock", "speaker": "peel", "line": "Manifest line."}]}),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "script_path": "script.json",
+                "audio_dir": "voice/audio",
+                "clips": [
+                    {
+                        "line_id": "peel-shock",
+                        "line_index": 0,
+                        "speaker": "peel",
+                        "text": "Manifest line.",
+                        "tone": "",
+                        "text_hash": "abc",
+                        "audio_id": clip_id,
+                        "start": 3.0,
+                        "duration": 0.5,
+                        "path": f"voice/audio/{clip_id}.wav",
+                        "mouth_events": [],
+                        "eye_events": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan_path.write_text(
+        json.dumps(
+            {
+                "reactionLibrary": [
+                    {
+                        "id": "wide-eyes-open-mouth",
+                        "name": "Wide Eyes Open Mouth",
+                        "dur": 1.2,
+                        "events": [
+                            {"t": 0, "code": "Comma", "down": True},
+                            {"t": 0, "code": "KeyM", "down": True},
+                        ],
+                    }
+                ],
+                "beats": [
+                    {
+                        "id": "peel-closeup-shock",
+                        "line_id": "peel-shock",
+                        "anchor": "end",
+                        "offset": -0.25,
+                        "character": "peel",
+                        "reaction": "wide-eyes-open-mouth",
+                        "duration": 1.2,
+                        "camera": {"x": 0.68, "y": 0.48, "zoom": 2.0},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    build_show(template, script_path, output, voice_manifest=manifest_path, performance_plan=plan_path)
+
+    with zipfile.ZipFile(output) as archive:
+        rendered = json.loads(archive.read("show.json"))
+
+    stage = rendered["stage"]
+    assert stage["reactionLibrary"][0]["id"] == "wide-eyes-open-mouth"
+    assert stage["characters"][1]["reactions"][0]["reactionID"] == "wide-eyes-open-mouth"
+    assert stage["characters"][1]["reactions"][0]["start"] == 3.25
+    camera_track = stage["backgroundTracks"][-1]
+    assert camera_track["id"] == "camera-beats"
+    assert camera_track["cues"][0]["camFrom"] == {"x": 0.68, "y": 0.48, "zoom": 2.0}
+    assert rendered["show"][0]["to"] == 5.45
 
 
 def test_retime_mouth_events_replaces_stale_keym_events(tmp_path: Path, monkeypatch):

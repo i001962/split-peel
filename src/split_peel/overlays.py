@@ -34,7 +34,7 @@ def apply_overlays(
 
     assets = show.setdefault("assets", [])
     stage = show.setdefault("stage", {})
-    audio_tracks = stage.setdefault("audioTracks", [])
+    image_tracks = stage.setdefault("imageTracks", [])
     background_tracks = stage.setdefault("backgroundTracks", [])
     assets_dir = package_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -92,18 +92,9 @@ def apply_overlays(
                 }
             )
         else:
-            audio_tracks.append(
+            image_tracks.append(
                 {
-                    "clips": [],
                     "cues": [cue],
-                    "fx": {
-                        "gain": 1,
-                        "high": 0,
-                        "low": 0,
-                        "mid": 0,
-                        "pan": "narrow",
-                        "reverb": 0,
-                    },
                     "hidden": False,
                     "id": track_id,
                     "name": str(overlay.get("trackName") or name),

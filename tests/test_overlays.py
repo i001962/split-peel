@@ -12,6 +12,7 @@ def test_apply_overlays_adds_asset_and_media_cue(tmp_path):
         "assets": [],
         "stage": {
             "audioTracks": [],
+            "imageTracks": [],
         },
     }
 
@@ -24,7 +25,8 @@ def test_apply_overlays_adds_asset_and_media_cue(tmp_path):
 
     assert len(show["assets"]) == 1
     assert (package_dir / "assets" / show["assets"][0]["file"]).exists()
-    track = show["stage"]["audioTracks"][0]
+    assert show["stage"]["audioTracks"] == []
+    track = show["stage"]["imageTracks"][0]
     assert track["name"] == "desk"
     assert track["cues"][0]["dur"] == 7.5
     assert track["cues"][0]["from"] == {"scale": 0.45, "x": 0.5, "y": 0.8}
@@ -38,6 +40,7 @@ def test_apply_overlays_marks_video_assets(tmp_path):
         "assets": [],
         "stage": {
             "audioTracks": [],
+            "imageTracks": [],
         },
     }
 
@@ -49,7 +52,7 @@ def test_apply_overlays_marks_video_assets(tmp_path):
     )
 
     assert show["assets"][0]["kind"] == "video"
-    assert show["stage"]["audioTracks"][0]["cues"][0]["assetID"] == show["assets"][0]["id"]
+    assert show["stage"]["imageTracks"][0]["cues"][0]["assetID"] == show["assets"][0]["id"]
 
 
 def test_apply_overlays_can_target_background_tracks(tmp_path):
@@ -110,6 +113,7 @@ def test_apply_overlays_can_exclude_episode_types(tmp_path):
         "assets": [],
         "stage": {
             "audioTracks": [],
+            "imageTracks": [],
         },
     }
 
@@ -123,6 +127,7 @@ def test_apply_overlays_can_exclude_episode_types(tmp_path):
 
     assert show["assets"] == []
     assert show["stage"]["audioTracks"] == []
+    assert show["stage"]["imageTracks"] == []
 
     apply_overlays(
         package_dir,
@@ -133,7 +138,7 @@ def test_apply_overlays_can_exclude_episode_types(tmp_path):
     )
 
     assert show["assets"][0]["name"] == "title"
-    assert show["stage"]["audioTracks"][0]["name"] == "title"
+    assert show["stage"]["imageTracks"][0]["name"] == "title"
 
 
 def test_overlay_example_manifest_is_valid_json():

@@ -79,7 +79,10 @@ def test_build_pipeline_plan_lists_artifacts_and_stages(tmp_path: Path, monkeypa
 
     assert plan["episode_slug"] == "demo"
     assert "fetch-scoreboard" in plan["stages"]
+    assert "build-voice" in plan["stages"]
     assert plan["artifacts"]["script"] == str(tmp_path / "runs/demo/script.json")
+    assert plan["artifacts"]["voice_manifest"] == str(tmp_path / "runs/demo/voice-manifest.json")
+    assert plan["artifacts"]["voice_audio_dir"] == str(tmp_path / "runs/demo/voice/audio")
     assert plan["artifacts"]["output_bannyshow"] == str(tmp_path / "outputs/demo.bannyshow")
     assert plan["artifacts"]["output_movie"] == str(tmp_path / "outputs/demo.mp4")
     assert plan["artifacts"]["movie_handoff"] == str(tmp_path / "runs/demo/movie-export-handoff.md")
@@ -358,7 +361,7 @@ def test_run_youtube_upload_uses_generated_metadata_and_writes_result(tmp_path: 
     assert calls["video_path"] == movie
     assert calls["metadata"].title == "Script Title"
     assert calls["metadata"].tags == ("football", "final whistle")
-    assert "Episode beats:" in calls["metadata"].description
+    assert calls["metadata"].description == "Script Title\n\nThe whistle goes, the takes stay loud."
     assert calls["kwargs"]["token_path"] == tmp_path / ".secrets/token.json"
     assert (tmp_path / "runs/demo/youtube-upload.json").exists()
 

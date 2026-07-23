@@ -21,6 +21,7 @@ from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_epis
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
 from split_peel.scriptwriter import draft_script
+from split_peel.voice_manifest import build_voice_manifest
 from split_peel.youtube import (
     DEFAULT_YOUTUBE_CATEGORY_ID,
     DEFAULT_YOUTUBE_PRIVACY_STATUS,
@@ -57,6 +58,7 @@ class PipelineConfig:
     match_id: Optional[str] = None
     no_espn: bool = False
     overlays_path: Optional[Path] = None
+    performance_plan_path: Optional[Path] = None
     characters_path: Path = DEFAULT_CHARACTERS_PATH
     instructions: Optional[str] = None
     instructions_file: Optional[Path] = None
@@ -121,6 +123,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         match_id=payload.get("match_id"),
         no_espn=bool(payload.get("no_espn", False)),
         overlays_path=_optional_path(payload.get("overlays_path"), base_dir),
+        performance_plan_path=_optional_path(payload.get("performance_plan_path"), base_dir),
         characters_path=_path(payload.get("characters_path") or DEFAULT_CHARACTERS_PATH, base_dir),
         instructions=payload.get("instructions"),
         instructions_file=_optional_path(payload.get("instructions_file"), base_dir),
@@ -176,6 +179,7 @@ def write_pipeline_config_template(path: Path) -> None:
         "match_id": None,
         "no_espn": False,
         "overlays_path": None,
+        "performance_plan_path": None,
         "characters_path": str(DEFAULT_CHARACTERS_PATH),
         "instructions": "Build a tight Banny and Peel studio commentary episode.",
         "instructions_file": None,
@@ -217,6 +221,8 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
     artifacts = {
         "feed": str(config.run_dir / "feed.json"),
         "script": str(config.run_dir / "script.json"),
+        "voice_manifest": str(config.run_dir / "voice-manifest.json"),
+        "voice_audio_dir": str(config.run_dir / "voice" / "audio"),
         "manifest": str(config.run_dir / "pipeline-manifest.json"),
         "qa_checklist": str(config.run_dir / "studio-qa-checklist.md"),
         "movie_handoff": str(config.run_dir / "movie-export-handoff.md"),
@@ -234,6 +240,8 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         )
     if config.overlays_path:
         artifacts["input_overlays"] = str(config.overlays_path)
+    if config.performance_plan_path:
+        artifacts["performance_plan"] = str(config.performance_plan_path)
     if config.banny_enabled:
         artifacts["banny_catalog"] = str(config.run_dir / "banny-catalog.json")
         artifacts["banny_wardrobe_repairs"] = str(config.run_dir / "banny-wardrobe-repairs.json")
@@ -271,7 +279,7 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             "write-empty-feed" if config.no_feed else "fetch-feed",
             *([] if config.no_espn else ["fetch-scoreboard", "normalize-match-context", "build-espn-overlays"]),
             "draft-script",
-            *([] if config.draft_only else ["build-show", "unpack", *_banny_stages(config)]),
+            *([] if config.draft_only else ["build-voice", "build-show", "unpack", *_banny_stages(config)]),
             *([] if config.draft_only else ["write-movie-export-handoff", "write-studio-qa-checklist"]),
             *([] if not _should_generate_youtube_thumbnail(config) else ["generate-youtube-thumbnail"]),
             *([] if config.draft_only or not config.youtube_upload_enabled else ["youtube-upload"]),
@@ -366,6 +374,15 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         return manifest
 
     memory_path = None if config.no_memory else save_episode_memory(script, config.memory_dir)
+    voice_manifest_path = config.run_dir / "voice-manifest.json"
+    build_voice_manifest(
+        script_path,
+        voice_manifest_path,
+        audio_dir=config.run_dir / "voice" / "audio",
+        characters=characters,
+        reuse_audio_from=config.reuse_audio_from,
+        skip_voice=config.skip_voice,
+    )
     build_show(
         config.template_path,
         script_path,
@@ -375,6 +392,8 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         characters=characters,
         reuse_audio_from=config.reuse_audio_from,
         skip_voice=config.skip_voice,
+        voice_manifest=voice_manifest_path,
+        performance_plan=config.performance_plan_path,
     )
     banny_result = run_banny_post_build(config) if config.banny_enabled else None
     unpack_package(config.output_bs, config.output_bannyshow, overwrite=True)
@@ -391,6 +410,7 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         **plan,
         "template_inspection": template_inspection,
         "memory_path": str(memory_path) if memory_path else None,
+        "voice_manifest": str(voice_manifest_path),
         "final_overlays": str(overlays_path) if overlays_path else None,
         "movie_export_path": str(config.output_movie),
         "banny": banny_result,

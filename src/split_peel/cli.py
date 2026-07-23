@@ -20,14 +20,24 @@ from split_peel.espn import (
 from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
-from split_peel.package import build_show, inspect_package, retime_mouth_events, roundtrip_package, unpack_package
+from split_peel.asset_registry import extract_asset_registry
+from split_peel.package import (
+    build_show,
+    build_show_from_registry,
+    inspect_package,
+    retime_mouth_events,
+    roundtrip_package,
+    unpack_package,
+    write_starter_show,
+)
 from split_peel.pipeline import (
     load_pipeline_config,
     run_studio_pipeline,
     write_pipeline_config_template,
 )
 from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
-from split_peel.youtube import YouTubeUploadMetadata, upload_video
+from split_peel.voice_manifest import build_voice_manifest
+from split_peel.youtube import YouTubeUploadMetadata, build_youtube_description, update_video_metadata, upload_video
 from split_peel.youtube_assets import DEFAULT_BRAND_LOCKUP, render_youtube_banner, render_youtube_thumbnail
 
 
@@ -50,6 +60,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     characters_parser = subparsers.add_parser("characters", help="Print the active character profiles.")
     characters_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
+
+    new_parser = subparsers.add_parser("new-show", help="Create a starter .bannyshow or .bs package.")
+    new_parser.add_argument("--out", type=Path, required=True)
+    new_parser.add_argument("--characters", type=int, default=2)
+    new_parser.add_argument("--overwrite", action="store_true")
 
     draft_parser = subparsers.add_parser("draft-script", help="Draft a structured two-commentator script.")
     draft_parser.add_argument("--feed", type=Path, required=True)
@@ -94,6 +109,33 @@ def main(argv: Optional[list[str]] = None) -> int:
     build_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
     build_parser.add_argument("--reuse-audio-from", type=Path)
     build_parser.add_argument("--skip-voice", action="store_true")
+    build_parser.add_argument("--voice-manifest", type=Path)
+    build_parser.add_argument("--performance-plan", type=Path)
+
+    voice_parser = subparsers.add_parser("build-voice", help="Build dialogue WAVs and a voice manifest from a script.")
+    voice_parser.add_argument("--script", type=Path, required=True)
+    voice_parser.add_argument("--out", type=Path, required=True)
+    voice_parser.add_argument("--audio-dir", type=Path)
+    voice_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
+    voice_parser.add_argument("--reuse-audio-from", type=Path)
+    voice_parser.add_argument("--skip-voice", action="store_true")
+
+    extract_parser = subparsers.add_parser("extract-studio-assets", help="Extract reusable Studio assets from a .bannyshow or .bs package.")
+    extract_parser.add_argument("--source", type=Path, required=True)
+    extract_parser.add_argument("--out", type=Path, required=True)
+    extract_parser.add_argument("--preset-id", default="default")
+    extract_parser.add_argument("--preset-name", default="Default Studio")
+
+    compose_parser = subparsers.add_parser("compose-show", help="Compose a fresh show from an asset registry and voice manifest.")
+    compose_parser.add_argument("--registry", type=Path, required=True)
+    compose_parser.add_argument("--scene-preset", default="default")
+    compose_parser.add_argument("--script", type=Path, required=True)
+    compose_parser.add_argument("--voice-manifest", type=Path, required=True)
+    compose_parser.add_argument("--out", type=Path, required=True)
+    compose_parser.add_argument("--background-gain", type=float)
+    compose_parser.add_argument("--overlays", type=Path)
+    compose_parser.add_argument("--performance-plan", type=Path)
+    compose_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
 
     make_parser = subparsers.add_parser("make", help="Run the first end-to-end smoke pipeline.")
     make_parser.add_argument("--template", type=Path, required=True)
@@ -121,6 +163,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     make_parser.add_argument("--draft-only", "--no-build", dest="draft_only", action="store_true")
     make_parser.add_argument("--reuse-audio-from", type=Path)
     make_parser.add_argument("--skip-voice", action="store_true")
+    make_parser.add_argument("--performance-plan", type=Path)
 
     pipeline_parser = subparsers.add_parser("studio-pipeline", help="Run a config-driven Banny Studio development pipeline.")
     pipeline_parser.add_argument("--config", type=Path, required=True)
@@ -129,9 +172,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     youtube_parser = subparsers.add_parser("upload-youtube", help="Upload a finished movie to YouTube.")
     youtube_parser.add_argument("--file", type=Path, required=True)
-    youtube_parser.add_argument("--title", required=True)
+    youtube_parser.add_argument("--title")
     youtube_parser.add_argument("--description", default="")
     youtube_parser.add_argument("--description-file", type=Path)
+    youtube_parser.add_argument("--script", type=Path)
+    youtube_parser.add_argument("--show-name", default="Final Whistle with Split & Peel")
+    youtube_parser.add_argument("--tagline", default="The whistle goes, the takes stay loud.")
     youtube_parser.add_argument("--tags", default="")
     youtube_parser.add_argument("--category-id", default="17")
     youtube_parser.add_argument("--privacy-status", default="private", choices=["private", "public", "unlisted"])
@@ -143,6 +189,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     youtube_parser.add_argument("--thumbnail", type=Path)
     youtube_parser.add_argument("--out", type=Path)
     youtube_parser.add_argument("--dry-run", action="store_true")
+
+    youtube_update_parser = subparsers.add_parser("update-youtube", help="Update metadata or thumbnail for an uploaded YouTube video.")
+    youtube_update_parser.add_argument("--video-id", required=True)
+    youtube_update_parser.add_argument("--title")
+    youtube_update_parser.add_argument("--description", default="")
+    youtube_update_parser.add_argument("--description-file", type=Path)
+    youtube_update_parser.add_argument("--script", type=Path)
+    youtube_update_parser.add_argument("--show-name", default="Final Whistle with Split & Peel")
+    youtube_update_parser.add_argument("--tagline", default="The whistle goes, the takes stay loud.")
+    youtube_update_parser.add_argument("--tags", default="")
+    youtube_update_parser.add_argument("--category-id", default="17")
+    youtube_update_parser.add_argument("--privacy-status", default="private", choices=["private", "public", "unlisted"])
+    youtube_update_parser.add_argument("--made-for-kids", action="store_true")
+    youtube_update_parser.add_argument("--contains-synthetic-media", action="store_true")
+    youtube_update_parser.add_argument("--credentials", type=Path)
+    youtube_update_parser.add_argument("--token", type=Path)
+    youtube_update_parser.add_argument("--thumbnail", type=Path)
+    youtube_update_parser.add_argument("--out", type=Path)
+    youtube_update_parser.add_argument("--dry-run", action="store_true")
 
     thumbnail_parser = subparsers.add_parser("generate-youtube-thumbnail", help="Generate a YouTube-ready episode thumbnail.")
     thumbnail_parser.add_argument("--out", type=Path, required=True)
@@ -169,6 +234,27 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"wrote {args.out}")
         return 0
 
+    if args.command == "extract-studio-assets":
+        extract_asset_registry(args.source, args.out, preset_id=args.preset_id, preset_name=args.preset_name)
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "compose-show":
+        characters = load_characters(args.characters)
+        build_show_from_registry(
+            args.registry,
+            args.script,
+            args.out,
+            scene_preset_id=args.scene_preset,
+            background_gain=args.background_gain,
+            overlays=args.overlays,
+            characters=characters,
+            voice_manifest=args.voice_manifest,
+            performance_plan=args.performance_plan,
+        )
+        print(f"wrote {args.out}")
+        return 0
+
     if args.command == "fetch-scoreboard":
         scoreboard_url = _scoreboard_url(args.scoreboard_url, args.espn_league)
         payload = fetch_scoreboard(scoreboard_url)
@@ -182,6 +268,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "characters":
         print(json.dumps(load_characters(args.characters), indent=2))
+        return 0
+
+    if args.command == "new-show":
+        write_starter_show(args.out, character_count=args.characters, overwrite=args.overwrite)
+        print(f"wrote {args.out}")
         return 0
 
     if args.command == "draft-script":
@@ -235,6 +326,21 @@ def main(argv: Optional[list[str]] = None) -> int:
             args.out,
             background_gain=args.background_gain,
             overlays=args.overlays,
+            characters=characters,
+            reuse_audio_from=args.reuse_audio_from,
+            skip_voice=args.skip_voice,
+            voice_manifest=args.voice_manifest,
+            performance_plan=args.performance_plan,
+        )
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "build-voice":
+        characters = load_characters(args.characters)
+        build_voice_manifest(
+            args.script,
+            args.out,
+            audio_dir=args.audio_dir,
             characters=characters,
             reuse_audio_from=args.reuse_audio_from,
             skip_voice=args.skip_voice,
@@ -307,6 +413,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 0
 
         memory_path = None if args.no_memory else save_episode_memory(script, args.memory_dir)
+        voice_manifest_path = args.run_dir / "voice-manifest.json"
+        build_voice_manifest(
+            script_path,
+            voice_manifest_path,
+            audio_dir=args.run_dir / "voice" / "audio",
+            characters=characters,
+            reuse_audio_from=args.reuse_audio_from,
+            skip_voice=args.skip_voice,
+        )
         build_show(
             args.template,
             script_path,
@@ -316,6 +431,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             characters=characters,
             reuse_audio_from=args.reuse_audio_from,
             skip_voice=args.skip_voice,
+            voice_manifest=voice_manifest_path,
+            performance_plan=args.performance_plan,
         )
         print(f"wrote {feed_path}")
         if not args.no_espn:
@@ -325,6 +442,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if overlays_path == args.run_dir / "pfp-overlays.json":
             print(f"wrote {overlays_path}")
         print(f"wrote {script_path}")
+        print(f"wrote {voice_manifest_path}")
         if memory_path:
             print(f"wrote {memory_path}")
         print(f"wrote {args.out}")
@@ -341,7 +459,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
 
     if args.command == "upload-youtube":
-        description = _instructions(args.description, args.description_file) or ""
+        script = _read_json(args.script) if args.script else {}
+        title = (args.title or "").strip() or str(script.get("title") or "").strip()
+        if not title:
+            raise SystemExit("--title is required unless --script points to a script with a title")
+        description = _instructions(args.description, args.description_file)
+        if description is None and script:
+            description = build_youtube_description(script, show_name=args.show_name, tagline=args.tagline)
+        description = description or ""
 
         def report_progress(label: str, progress: Optional[float]) -> None:
             if progress is None:
@@ -352,7 +477,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         result = upload_video(
             args.file,
             YouTubeUploadMetadata(
-                title=args.title,
+                title=title,
                 description=description,
                 tags=_tags(args.tags),
                 category_id=args.category_id,
@@ -367,6 +492,35 @@ def main(argv: Optional[list[str]] = None) -> int:
             out_path=args.out,
             dry_run=args.dry_run,
             progress_callback=report_progress,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "update-youtube":
+        script = _read_json(args.script) if args.script else {}
+        title = (args.title or "").strip() or str(script.get("title") or "").strip()
+        if not title:
+            raise SystemExit("--title is required unless --script points to a script with a title")
+        description = _instructions(args.description, args.description_file)
+        if description is None and script:
+            description = build_youtube_description(script, show_name=args.show_name, tagline=args.tagline)
+        description = description or ""
+        result = update_video_metadata(
+            args.video_id,
+            YouTubeUploadMetadata(
+                title=title,
+                description=description,
+                tags=_tags(args.tags),
+                category_id=args.category_id,
+                privacy_status=args.privacy_status,
+                made_for_kids=args.made_for_kids,
+                contains_synthetic_media=True if args.contains_synthetic_media else None,
+            ),
+            credentials_path=args.credentials,
+            token_path=args.token,
+            thumbnail_path=args.thumbnail,
+            out_path=args.out,
+            dry_run=args.dry_run,
         )
         print(json.dumps(result, indent=2))
         return 0
