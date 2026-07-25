@@ -12,6 +12,8 @@ def test_load_characters_returns_defaults_for_missing_file(tmp_path):
     assert characters["characters"][0]["appearance"]["baseOutfit"]["7"] == "gapteeth"
     assert characters["characters"][0]["appearance"]["baseOutfit"]["9"] == "sweatsuit"
     assert characters["characters"][0]["appearance"]["baseOutfit"]["12"] == "dorthy-hair"
+    assert characters["characters"][1]["appearance"]["baseOutfit"]["6"] == "proff-glasses"
+    assert characters["characters"][1]["appearance"]["baseOutfit"]["11"] == "zucco-tshirt"
     instructions = instructions_for_speaker(characters, "split", "fallback")
     assert "female cartoon banana sports-announcer voice" in instructions
     assert "cartoon banana football commentator" in instructions

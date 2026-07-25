@@ -120,6 +120,38 @@ def test_make_draft_only_writes_script_without_building(tmp_path: Path, monkeypa
     assert not (tmp_path / "memory").exists()
 
 
+def test_ideas_command_writes_topic_plan_without_building(tmp_path: Path, monkeypatch):
+    output = tmp_path / "ideas.json"
+    run_dir = tmp_path / "run"
+    monkeypatch.setattr(
+        "split_peel.cli.fetch_x_trends",
+        lambda woeid, bearer_token=None: {"data": [{"trend_name": "Bayern transfer", "tweet_count": 90000}]},
+    )
+    monkeypatch.setattr(
+        "split_peel.cli.fetch_feed",
+        lambda url: {
+            "casts": [
+                {
+                    "text": "Bayern transfer rumor discourse is already impossible.",
+                    "timestamp": "2026-07-23T10:00:00.000Z",
+                    "author": {"username": "fan"},
+                    "reactions": {"likes_count": 4},
+                    "replies": {"count": 1},
+                }
+            ]
+        },
+    )
+
+    main(["ideas", "--out", str(output), "--run-dir", str(run_dir), "--no-espn", "--no-memory"])
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["purpose"] == "idea-generator"
+    assert payload["ttsReady"] is False
+    assert payload["ideas"][0]["topic"] == "Bayern transfer"
+    assert (run_dir / "x-trends.json").exists()
+    assert (run_dir / "feed.json").exists()
+
+
 def test_make_writes_voice_manifest_and_builds_from_reused_audio(tmp_path: Path, monkeypatch):
     run_dir = tmp_path / "run"
     template = tmp_path / "template.bs"

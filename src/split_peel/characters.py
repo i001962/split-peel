@@ -49,6 +49,12 @@ DEFAULT_CHARACTERS = {
                 "playful, quick, and slightly chaotic. React to fan comments like every "
                 "post is a dramatic plot twist."
             ),
+            "appearance": {
+                "baseOutfit": {
+                    "6": "proff-glasses",
+                    "11": "zucco-tshirt",
+                }
+            },
             "personality": [
                 "cartoon banana co-commentator",
                 "bright, bouncy, theatrical, and playful",

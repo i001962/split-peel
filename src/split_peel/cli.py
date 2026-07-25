@@ -36,7 +36,9 @@ from split_peel.pipeline import (
     write_pipeline_config_template,
 )
 from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
+from split_peel.topic_ideas import generate_topic_ideas
 from split_peel.voice_manifest import build_voice_manifest
+from split_peel.x_trends import DEFAULT_X_WOEID, fetch_x_trends
 from split_peel.youtube import YouTubeUploadMetadata, build_youtube_description, update_video_metadata, upload_video
 from split_peel.youtube_assets import DEFAULT_BRAND_LOCKUP, render_youtube_banner, render_youtube_thumbnail
 
@@ -57,6 +59,29 @@ def main(argv: Optional[list[str]] = None) -> int:
     scoreboard_parser.add_argument("--match-id")
     scoreboard_parser.add_argument("--out", type=Path, required=True)
     scoreboard_parser.add_argument("--match-context-out", type=Path)
+
+    x_trends_parser = subparsers.add_parser("fetch-x-trends", help="Fetch X trending topics by WOEID.")
+    x_trends_parser.add_argument("--x-woeid", default=DEFAULT_X_WOEID)
+    x_trends_parser.add_argument("--x-bearer-token")
+    x_trends_parser.add_argument("--out", type=Path, required=True)
+
+    ideas_parser = subparsers.add_parser("ideas", help="Generate draft-only episode ideas from X trends, Farcaster, ESPN, and memory.")
+    ideas_parser.add_argument("--x-woeid", default=DEFAULT_X_WOEID)
+    ideas_parser.add_argument("--x-bearer-token")
+    ideas_parser.add_argument("--x-trends", type=Path)
+    ideas_parser.add_argument("--feed", type=Path)
+    ideas_parser.add_argument("--feed-url", default=DEFAULT_FOOTBALL_FEED_URL)
+    ideas_parser.add_argument("--espn-league", default=DEFAULT_ESPN_LEAGUE)
+    ideas_parser.add_argument("--scoreboard-url")
+    ideas_parser.add_argument("--match-id")
+    ideas_parser.add_argument("--match-context", type=Path)
+    ideas_parser.add_argument("--no-espn", action="store_true")
+    ideas_parser.add_argument("--memory-dir", type=Path, default=DEFAULT_MEMORY_DIR)
+    ideas_parser.add_argument("--no-memory", action="store_true")
+    ideas_parser.add_argument("--limit", type=int, default=10)
+    ideas_parser.add_argument("--seed-terms", default="")
+    ideas_parser.add_argument("--run-dir", type=Path)
+    ideas_parser.add_argument("--out", type=Path, required=True)
 
     characters_parser = subparsers.add_parser("characters", help="Print the active character profiles.")
     characters_parser.add_argument("--characters", type=Path, default=DEFAULT_CHARACTERS_PATH)
@@ -231,6 +256,40 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.command == "fetch-feed":
         payload = fetch_feed(args.feed_url)
         write_json(args.out, payload)
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "fetch-x-trends":
+        payload = fetch_x_trends(args.x_woeid, bearer_token=args.x_bearer_token)
+        write_json(args.out, payload)
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "ideas":
+        x_trends_payload = _read_json(args.x_trends) if args.x_trends else fetch_x_trends(args.x_woeid, bearer_token=args.x_bearer_token)
+        feed = _read_json(args.feed) if args.feed else fetch_feed(args.feed_url)
+        match_context = _read_json(args.match_context) if args.match_context else None
+        if not args.no_espn and match_context is None:
+            scoreboard = fetch_scoreboard(_scoreboard_url(args.scoreboard_url, args.espn_league))
+            match_context = normalize_scoreboard(scoreboard, match_id=args.match_id)
+            if args.run_dir:
+                write_json(args.run_dir / "scoreboard.json", scoreboard)
+                write_json(args.run_dir / "match_context.json", match_context)
+        memory = [] if args.no_memory else load_episode_memory(args.memory_dir)
+        ideas = generate_topic_ideas(
+            x_trends_payload=x_trends_payload,
+            feed=feed,
+            match_context=match_context,
+            memory=memory,
+            limit=args.limit,
+            seed_terms=_tags(args.seed_terms) or None,
+        )
+        if args.run_dir:
+            if not args.x_trends:
+                write_json(args.run_dir / "x-trends.json", x_trends_payload)
+            if not args.feed:
+                write_json(args.run_dir / "feed.json", feed)
+        write_json(args.out, ideas)
         print(f"wrote {args.out}")
         return 0
 
