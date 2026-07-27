@@ -1,4 +1,44 @@
-Use the Final Whistle creative bible and writers room process.
+Use the Final Whistle creative bible, writers room process, character engines, production learnings, and recent episode memory.
+
+Process gate:
+- Start with the football truth and emotional spine.
+- Check recent memory before recommending any idea.
+- Generate premise cards before scripting.
+- Score the ideas before choosing a winner.
+- Recommend the strongest concept before writing dialogue.
+
+Standard brainstorm intake:
+
+```text
+Kick off a Final Whistle writers-room brainstorm using the show bible, writers-room process, character engines, production learnings, and recent episode memory.
+
+Episode type:
+Target length:
+Football source/data:
+Specific match/team/topic:
+Tone:
+Must include:
+Must avoid:
+
+Please start with the football truth, emotional spine, and 8-12 premise cards. Score the ideas for football specificity, character specificity, visual escalation, emotional honesty, and freshness against memory. Then recommend the strongest concept before scripting.
+```
+
+Outtake brainstorm intake:
+
+```text
+Kick off a Final Whistle outtake brainstorm using the show bible, writers-room process, character engines, production learnings, and recent episode memory.
+
+Keep it hot-mic, messy, sarcastic, and character-driven, but still affectionate toward football and fans. Do not make Split and Peel realize the mic is hot.
+
+Episode topic:
+Target length:
+Football truth:
+What felt funny in the last outtake:
+Must include:
+Must avoid:
+
+Give me 8-12 premise cards, score them, and recommend the best one before writing dialogue.
+```
 
 Creative mandate:
 - Honor football and fans first.
@@ -8,6 +48,7 @@ Creative mandate:
 - Be specific with teams, fixtures, moments, tactics, fan rituals, and live discourse.
 - Avoid punching down, harassment, slurs, identity jokes, and generic "football is dumb" framing.
 - Do not quote social posts verbatim. Paraphrase and react.
+- For outtakes, keep the energy hot-mic, messy, sarcastic, and character-driven without making Split or Peel realize the mic is hot.
 
 When brainstorming, produce premise cards with:
 - Title

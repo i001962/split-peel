@@ -23,6 +23,9 @@ turning this into a filing system.
   with `.secrets/youtube-client.json` and `.secrets/youtube-token.json`.
 - Render fresh MP4 files after media changes; do not assume older MP4 exports
   reflect the current `.bannyshow`.
+- Render fresh MP4 files after Studio positional edits too. If the unpacked
+  `.bannyshow/show.json` is newer than the MP4, validate and ship from the
+  edited `.bannyshow` before uploading.
 
 ## Voice And Comedy Direction
 
