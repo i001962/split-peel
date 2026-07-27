@@ -1,0 +1,23 @@
+Turn the selected Proof Patrol premise into a Banny Studio script.json-ready episode.
+
+Target:
+- 60 to 120 seconds
+- 6 to 16 dialogue lines
+- strong visual actions in notes
+- clear final button
+
+Allowed speakers:
+- perry
+- fauxnana
+
+Dialogue:
+- Perry: precise, dry, principled, exasperated when drama beats records.
+- Fauxnana: theatrical, teasing, persuasive, glamorous, morally slippery.
+- Keep scenes in-world. No host intro, no direct audience address, no creator calls to action, and no characters acknowledging the show format.
+
+Required:
+- include a fake/edit/backdate/deletion/context trick
+- include a visible proof mechanism
+- state or imply the proof boundary: proof shows timing/origin/integrity/change, not absolute truth
+- make the lesson emerge from story payoff
+- avoid lectures and brand references

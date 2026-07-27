@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "notes": "Starter overlay manifest for Proof Patrol. Replace placeholder asset paths after proof-lab, seal, and title assets are created.",
+  "overlays": [
+    {
+      "name": "proof patrol title",
+      "file": "examples/proof-patrol/assets/proof-patrol-title.png",
+      "start": 0,
+      "dur": 3.5,
+      "x": 0.5,
+      "y": 0.14,
+      "scale": 0.52
+    },
+    {
+      "name": "tamper alert",
+      "file": "examples/proof-patrol/assets/tamper-alert.png",
+      "start": 14,
+      "dur": 4,
+      "x": 0.5,
+      "y": 0.2,
+      "scale": 0.46
+    },
+    {
+      "name": "version trace",
+      "file": "examples/proof-patrol/assets/version-trace.png",
+      "start": 22,
+      "dur": 5,
+      "x": 0.5,
+      "y": 0.78,
+      "scale": 0.72
+    }
+  ]
+}

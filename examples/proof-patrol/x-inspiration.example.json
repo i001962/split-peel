@@ -1,0 +1,15 @@
+{
+  "series": "proof-patrol",
+  "sourcePolicy": "X is inspiration only. Do not treat these items as verified truth unless producer-confirmed facts are added.",
+  "items": [
+    {
+      "source": "x",
+      "use": "inspiration",
+      "factCheckRequired": true,
+      "topic": "People arguing over a cropped apology screenshot",
+      "manipulationPattern": "synthetic receipt or missing original",
+      "fictionalizedAngle": "A mayor's apology receipt appears before the scandal happened, but the timestamp trail shows it was backdated."
+    }
+  ]
+}
+

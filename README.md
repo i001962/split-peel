@@ -28,15 +28,20 @@ This project treats an existing `.bs` file as a reusable template, then programm
 ## Target Flow
 
 ```text
-Farcaster football feed
-  -> topic extraction
-  -> two-commentator comedy script
-  -> voice generation
-  -> mouth timing from audio
-  -> idle/reaction movement
-  -> show.json mutation
-  -> packaged .bs output
+Load -> Extract -> Graph -> Index -> Query -> Memory -> Produce show -> Update learning
 ```
+
+The default research load combines the Farcaster football-channel parent-url
+feed with the Falsenine bot user feed:
+
+```text
+https://haatz.quilibrium.com/v2/farcaster/feed/user/casts?fid=2477947&limit=20
+```
+
+Falsenine bot casts are treated as useful fact leads, not verified facts. They
+are labeled with `researchSourceId: "falsenine-bot"` and
+`factCheckRequired: true`, then must be checked against ESPN, official sources,
+or producer-confirmed notes before they drive spoken show claims.
 
 ## Build And Iteration Model
 
@@ -311,6 +316,11 @@ The Farcaster feed endpoint returns `casts[]` with fields such as:
 - `mentioned_profiles`
 
 The pipeline should rank casts by match relevance, recency, engagement, and comedic usefulness. Generated dialogue should paraphrase or react to fan casts rather than copy them wholesale.
+
+`split-peel fetch-feed`, `split-peel ideas`, `split-peel make`, and
+`studio-pipeline` default to the combined research feed. Use
+`--no-falsenine-bot` on CLI commands, or `"include_falsenine_bot": false` in a
+pipeline config, for isolated football-channel-only runs.
 
 When ESPN match context is enabled, ESPN takes precedence. Farcaster casts must mention the selected match, team names, or team abbreviations to become `sourceCasts`. Unmatched social posts are kept as `fallbackCasts` metadata and should not drive the episode script.
 

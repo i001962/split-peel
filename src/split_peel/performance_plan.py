@@ -37,6 +37,7 @@ def apply_performance_plan(
     _merge_reaction_definitions(stage, plan.get("reactionLibrary") or plan.get("reactions") or [])
 
     end = 0.0
+    camera_beats: list[tuple[dict[str, Any], int, dict[str, Any], float, float]] = []
     for index, beat in enumerate(plan.get("beats") or []):
         if not isinstance(beat, dict):
             continue
@@ -48,7 +49,9 @@ def apply_performance_plan(
             _apply_reaction_instance(stage, beat, index, reaction_id, start, duration)
         camera = beat.get("camera") or beat.get("shot")
         if isinstance(camera, dict):
-            _apply_camera_cue(stage, beat, index, camera, start, duration)
+            camera_beats.append((beat, index, camera, start, duration))
+    if camera_beats:
+        _apply_camera_plan(stage, camera_beats)
     return round(end, 3)
 
 
@@ -136,50 +139,72 @@ def _character_index(value: Any, characters: list[dict[str, Any]]) -> int:
     raise PerformancePlanError(f"unknown character reference: {value}")
 
 
-def _apply_camera_cue(
+def _apply_camera_plan(
     stage: dict[str, Any],
-    beat: dict[str, Any],
-    index: int,
-    camera: dict[str, Any],
-    start: float,
-    duration: float,
+    beats: list[tuple[dict[str, Any], int, dict[str, Any], float, float]],
 ) -> None:
-    background = _background_reference(stage, start)
-    if not background:
+    tracks = [track for track in stage.get("backgroundTracks") or [] if track.get("id") != "camera-beats"]
+    if not tracks:
         return
-    tracks = stage.setdefault("backgroundTracks", [])
-    camera_track = next((track for track in tracks if track.get("id") == "camera-beats"), None)
-    if camera_track is None:
-        camera_track = {"id": "camera-beats", "name": "Camera Beats", "hidden": False, "cues": [], "presence": []}
-        tracks.append(camera_track)
-    cam_state = {
-        "x": float(camera.get("x", 0.5)),
-        "y": float(camera.get("y", 0.5)),
-        "zoom": float(camera.get("zoom", 1.0)),
-    }
-    cue_id = str(beat.get("camera_id") or beat.get("shot_id") or make_id(f"camera-{start}-{index}"))
-    camera_track.setdefault("cues", []).append(
-        {
-            "id": cue_id,
-            "assetID": background["assetID"],
-            "start": start,
-            "dur": duration,
-            "crop": background.get("crop") or "cover",
-            "label": str(beat.get("id") or cue_id),
-            "camFrom": cam_state,
-            "camTo": cam_state,
+
+    # Banny v4 permits exactly one background (Scenes) track. Rebase any
+    # inherited cuts into that track rather than adding a parallel camera track.
+    scenes = tracks[0]
+    scenes["name"] = "Scenes"
+    scenes["cues"] = _camera_cues(tracks, beats)
+    stage["backgroundTracks"] = [scenes]
+
+
+def _camera_cues(
+    tracks: list[dict[str, Any]],
+    beats: list[tuple[dict[str, Any], int, dict[str, Any], float, float]],
+) -> list[dict[str, Any]]:
+    first_start = beats[0][3]
+    cues: list[dict[str, Any]] = []
+    if first_start > 0:
+        background = _background_reference_from_tracks(tracks, 0)
+        if background:
+            cues.append({**background, "start": 0.0, "dur": first_start})
+
+    for position, (beat, index, camera, start, duration) in enumerate(beats):
+        background = _background_reference_from_tracks(tracks, start)
+        if not background:
+            continue
+        next_start = beats[position + 1][3] if position + 1 < len(beats) else None
+        cue_duration = (next_start - start) if next_start is not None else duration + 1.0
+        cam_state = {
+            "x": float(camera.get("x", 0.5)),
+            "y": float(camera.get("y", 0.5)),
+            "zoom": float(camera.get("zoom", 1.0)),
         }
-    )
+        cue_id = str(beat.get("camera_id") or beat.get("shot_id") or make_id(f"camera-{start}-{index}"))
+        cues.append(
+            {
+                "id": cue_id,
+                "assetID": background["assetID"],
+                "start": start,
+                "dur": round(max(0.05, cue_duration), 3),
+                "crop": background.get("crop") or "cover",
+                "label": str(beat.get("id") or cue_id),
+                "camFrom": cam_state,
+                "camTo": cam_state,
+            }
+        )
+    return cues
 
 
 def _background_reference(stage: dict[str, Any], start: float) -> Optional[dict[str, Any]]:
-    for track in reversed(stage.get("backgroundTracks") or []):
+    return _background_reference_from_tracks(stage.get("backgroundTracks") or [], start)
+
+
+def _background_reference_from_tracks(tracks: list[dict[str, Any]], start: float) -> Optional[dict[str, Any]]:
+    for track in reversed(tracks):
         for cue in reversed(track.get("cues") or []):
             cue_start = float(cue.get("start") or 0)
             cue_dur = float(cue.get("dur") or 0)
             if cue_start <= start < cue_start + cue_dur:
                 return cue
-    for track in reversed(stage.get("backgroundTracks") or []):
+    for track in reversed(tracks):
         cues = track.get("cues") or []
         if cues:
             return cues[0]

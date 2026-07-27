@@ -6,7 +6,7 @@ from pathlib import Path
 
 from split_peel.asset_registry import extract_asset_registry
 from split_peel.cli import main
-from split_peel.package import build_show_from_registry
+from split_peel.package import LATEST_SHOW_SCHEMA_VERSION, build_show_from_registry
 
 
 def test_extract_asset_registry_captures_studio_stage(tmp_path: Path):
@@ -45,6 +45,7 @@ def test_build_show_from_registry_composes_fresh_bannyshow(tmp_path: Path):
     rendered = json.loads((output / "show.json").read_text(encoding="utf-8"))
     assert (output / "assets" / "studio.png").exists()
     assert (output / "audio" / f"{clip_id}.wav").exists()
+    assert rendered["version"] == LATEST_SHOW_SCHEMA_VERSION
     assert rendered["stage"]["characters"][0]["subs"][0]["text"] == "Fresh build."
     assert rendered["stage"]["audioTracks"][0]["clips"][0]["id"] == clip_id
 
@@ -85,12 +86,13 @@ def test_extract_and_compose_commands_round_trip_registry(tmp_path: Path):
         rendered = json.loads(archive.read("show.json"))
         names = archive.namelist()
     assert "assets/studio.png" in names
+    assert rendered["version"] == LATEST_SHOW_SCHEMA_VERSION
     assert rendered["stage"]["audioTracks"][0]["clips"][0]["id"] == clip_id
 
 
 def _studio_show():
     return {
-        "version": 3,
+        "version": LATEST_SHOW_SCHEMA_VERSION,
         "assets": [{"id": "studio-bg", "name": "Studio", "kind": "image", "file": "studio.png"}],
         "settings": {"activeScene": 0, "lightSize": 0, "frameW": 16, "frameH": 9},
         "show": [{"sceneID": "", "name": "Studio", "from": 0, "to": 5}],

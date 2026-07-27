@@ -18,7 +18,7 @@ from split_peel.espn import (
     normalize_scoreboard,
     scoreboard_url_for_league,
 )
-from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
+from split_peel.feed import DEFAULT_FALSENINE_BOT_FEED_URL, DEFAULT_FOOTBALL_FEED_URL, fetch_research_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.asset_registry import extract_asset_registry
@@ -52,6 +52,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     fetch_parser = subparsers.add_parser("fetch-feed", help="Fetch and cache the Farcaster feed.")
     fetch_parser.add_argument("--feed-url", default=DEFAULT_FOOTBALL_FEED_URL)
+    fetch_parser.add_argument("--falsenine-bot-feed-url", default=DEFAULT_FALSENINE_BOT_FEED_URL)
+    fetch_parser.add_argument("--no-falsenine-bot", action="store_true")
     fetch_parser.add_argument("--out", type=Path, required=True)
 
     scoreboard_parser = subparsers.add_parser("fetch-scoreboard", help="Fetch and normalize an ESPN scoreboard.")
@@ -72,6 +74,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ideas_parser.add_argument("--x-trends", type=Path)
     ideas_parser.add_argument("--feed", type=Path)
     ideas_parser.add_argument("--feed-url", default=DEFAULT_FOOTBALL_FEED_URL)
+    ideas_parser.add_argument("--falsenine-bot-feed-url", default=DEFAULT_FALSENINE_BOT_FEED_URL)
+    ideas_parser.add_argument("--no-falsenine-bot", action="store_true")
     ideas_parser.add_argument("--espn-league", default=DEFAULT_ESPN_LEAGUE)
     ideas_parser.add_argument("--scoreboard-url")
     ideas_parser.add_argument("--match-id")
@@ -186,6 +190,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     make_parser = subparsers.add_parser("make", help="Run the first end-to-end smoke pipeline.")
     make_parser.add_argument("--template", type=Path, required=True)
     make_parser.add_argument("--feed-url", default=DEFAULT_FOOTBALL_FEED_URL)
+    make_parser.add_argument("--falsenine-bot-feed-url", default=DEFAULT_FALSENINE_BOT_FEED_URL)
+    make_parser.add_argument("--no-falsenine-bot", action="store_true")
     make_parser.add_argument("--espn-league", default=DEFAULT_ESPN_LEAGUE)
     make_parser.add_argument("--scoreboard-url")
     make_parser.add_argument("--match-id")
@@ -275,7 +281,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "fetch-feed":
-        payload = fetch_feed(args.feed_url)
+        payload = fetch_research_feed(
+            args.feed_url,
+            include_falsenine_bot=not args.no_falsenine_bot,
+            falsenine_bot_feed_url=args.falsenine_bot_feed_url,
+        )
         write_json(args.out, payload)
         print(f"wrote {args.out}")
         return 0
@@ -288,7 +298,15 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "ideas":
         x_trends_payload = _read_json(args.x_trends) if args.x_trends else fetch_x_trends(args.x_woeid, bearer_token=args.x_bearer_token)
-        feed = _read_json(args.feed) if args.feed else fetch_feed(args.feed_url)
+        feed = (
+            _read_json(args.feed)
+            if args.feed
+            else fetch_research_feed(
+                args.feed_url,
+                include_falsenine_bot=not args.no_falsenine_bot,
+                falsenine_bot_feed_url=args.falsenine_bot_feed_url,
+            )
+        )
         match_context = _read_json(args.match_context) if args.match_context else None
         if not args.no_espn and match_context is None:
             scoreboard = fetch_scoreboard(_scoreboard_url(args.scoreboard_url, args.espn_league))
@@ -477,7 +495,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         characters = load_characters(args.characters)
         memory = [] if args.no_memory else load_episode_memory(args.memory_dir)
         instructions = _instructions(args.instructions, args.instructions_file)
-        feed = fetch_feed(args.feed_url)
+        feed = fetch_research_feed(
+            args.feed_url,
+            include_falsenine_bot=not args.no_falsenine_bot,
+            falsenine_bot_feed_url=args.falsenine_bot_feed_url,
+        )
         write_json(feed_path, feed)
 
         if not args.no_espn:

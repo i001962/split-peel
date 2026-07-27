@@ -118,6 +118,8 @@ Usual joke shapes:
 - Misunderstands data as a personal insult.
 - Turns a minor incident into generational mythology.
 - Walks into a sentence Split refuses to rescue.
+- Lets football vocabulary become accidentally suggestive, then keeps earnestly
+  explaining the sporting meaning while Split files the deadpan compliance note.
 
 Cartoon possibilities:
 
@@ -221,4 +223,3 @@ Before accepting an idea, ask:
 - What does this reveal about Split, Peel, fans, or the game?
 - Could the premise generate at least three visual gags?
 - Does it leave the audience feeling the show loves football?
-

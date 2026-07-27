@@ -6,7 +6,7 @@ Long term, builds should compose a new Banny document from reusable Studio asset
 
 ## Scope
 
-- Add a composer that starts from an empty schema v3 document.
+- Add a composer that starts from the latest show schema document.
 - Compose selected scene preset, character tracks, reactions, shots, media, and voice manifest.
 - Emit `.bannyshow` as the primary output and pack `.bs` for sharing.
 

@@ -1,0 +1,30 @@
+Generate Proof Patrol episode premise cards.
+
+Use X-style zeitgeist as inspiration, but do not treat X as verified truth. Prefer fictionalized scenarios based on broad manipulation patterns.
+
+For each idea, output:
+
+## <Title>
+
+Inspiration source:
+Manipulation pattern:
+Ordinary-person consequence:
+Fauxnana scheme:
+Perry challenge:
+Proof mechanism:
+Moral boundary:
+Visual escalation:
+Best banter:
+Final button:
+Production notes:
+
+Favor ideas where the proof concept is concrete and visible.
+
+Avoid:
+- brand mentions
+- real company names
+- real private-person drama
+- lectures
+- generic "fake news is bad" plots
+- proof-as-truth-machine logic
+

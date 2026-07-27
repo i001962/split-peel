@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from split_peel.audio import VoiceClip
 
 
@@ -9,14 +11,20 @@ SPEAKER_CHARACTER_INDEX = {
 }
 
 
-def build_character_events(clips: list[VoiceClip], character_count: int, duration: float) -> list[list[dict[str, object]]]:
+def build_character_events(
+    clips: list[VoiceClip],
+    character_count: int,
+    duration: float,
+    speaker_character_index: Optional[dict[str, int]] = None,
+) -> list[list[dict[str, object]]]:
     events_by_character: list[list[dict[str, object]]] = [[] for _ in range(character_count)]
+    speaker_map = speaker_character_index or SPEAKER_CHARACTER_INDEX
 
     for character_index in range(character_count):
         events_by_character[character_index].extend(_blink_events(duration, phase=character_index * 1.3))
 
     for clip in clips:
-        speaker_index = SPEAKER_CHARACTER_INDEX.get(clip.speaker, 0)
+        speaker_index = speaker_map.get(clip.speaker, 0)
         if speaker_index >= character_count:
             continue
         events_by_character[speaker_index].extend(clip.mouth_events)

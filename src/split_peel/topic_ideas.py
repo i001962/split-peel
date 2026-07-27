@@ -239,10 +239,17 @@ def _farcaster_hooks(casts: list[RankedCast]) -> list[dict[str, Any]]:
         hooks.append(
             {
                 "username": cast.username,
-                "reason": "Recent Farcaster post overlaps with the X trend.",
+                "reason": (
+                    "Falsenine bot fact lead overlaps with the X trend; verify before scripting."
+                    if cast.fact_check_required
+                    else "Recent Farcaster post overlaps with the X trend."
+                ),
                 "likes": cast.likes,
                 "replies": cast.replies,
                 "text": _shorten(cast.text, 180),
+                "researchSourceId": cast.research_source_id,
+                "researchSourceName": cast.research_source_name,
+                "factCheckRequired": cast.fact_check_required,
             }
         )
     return hooks

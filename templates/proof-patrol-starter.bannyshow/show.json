@@ -1,0 +1,276 @@
+{
+  "assets" : [
+    {
+      "file" : "proof-patrol-lab.gif",
+      "id" : "proof-patrol-lab",
+      "kind" : "image",
+      "name" : "Proof Lab (Brown Set)"
+    }
+  ],
+  "settings" : {
+    "activeScene" : 0,
+    "frameH" : 9,
+    "frameW" : 16,
+    "lightSize" : 0
+  },
+  "show" : [
+    {
+      "from" : 0,
+      "name" : "Proof Patrol Lab",
+      "sceneID" : "proof-patrol-lab",
+      "to" : 75
+    }
+  ],
+  "stage" : {
+    "audioTracks" : [
+      {
+        "clips" : [
+
+        ],
+        "cues" : [
+
+        ],
+        "fx" : {
+          "gain" : 1,
+          "high" : 0,
+          "low" : 0,
+          "mid" : 0,
+          "pan" : "follow",
+          "reverb" : 0
+        },
+        "hidden" : false,
+        "id" : "dialogue",
+        "locked" : false,
+        "name" : "Dialogue",
+        "presence" : [
+
+        ],
+        "solo" : false
+      }
+    ],
+    "backgroundTracks" : [
+      {
+        "cues" : [
+          {
+            "assetID" : "proof-patrol-lab",
+            "crop" : "cover",
+            "dur" : 75,
+            "id" : "proof-patrol-lab-cue",
+            "start" : 0
+          }
+        ],
+        "hidden" : false,
+        "id" : "proof-patrol-scenes",
+        "locked" : false,
+        "name" : "Scenes",
+        "presence" : [
+
+        ]
+      }
+    ],
+    "characters" : [
+      {
+        "armedGroups" : [
+          "move",
+          "depth",
+          "tilt",
+          "talk",
+          "blink",
+          "jump",
+          "spin",
+          "zoom"
+        ],
+        "baseOutfit" : {
+          "11" : "doc-coat",
+          "12" : "green-hat",
+          "5" : "glassy",
+          "6" : "nerd"
+        },
+        "body" : "original",
+        "clips" : [
+
+        ],
+        "depth" : 0,
+        "events" : [
+
+        ],
+        "face" : 1,
+        "hidden" : false,
+        "locked" : false,
+        "name" : "Perry Provenance",
+        "presence" : [
+
+        ],
+        "reactions" : [
+
+        ],
+        "rotationSpeed" : 90,
+        "size" : 1,
+        "solo" : false,
+        "speechVoice" : {
+          "automaticMouth" : true,
+          "recipe" : {
+            "compression" : 0,
+            "delayFeedback" : 0,
+            "delayMix" : 0,
+            "delayTime" : 0.12,
+            "distortion" : "none",
+            "distortionMix" : 0,
+            "doubling" : 0,
+            "flavor" : 1,
+            "high" : 0,
+            "low" : 0,
+            "mid" : 0,
+            "name" : "Natural",
+            "outputGainDB" : 0,
+            "pitchCents" : 0,
+            "preset" : "natural",
+            "reverbMix" : 0,
+            "reverbSpace" : "mediumRoom"
+          }
+        },
+        "speed" : 320,
+        "subs" : [
+
+        ],
+        "trackFx" : {
+          "gain" : 1,
+          "high" : 0,
+          "low" : 0,
+          "mid" : 0,
+          "pan" : "follow",
+          "reverb" : 0
+        },
+        "voicePitch" : 0,
+        "voiceSpeed" : 1.08,
+        "wobble" : 7,
+        "x" : 0.26
+      },
+      {
+        "armedGroups" : [
+          "move",
+          "depth",
+          "tilt",
+          "talk",
+          "blink",
+          "jump",
+          "spin",
+          "zoom"
+        ],
+        "baseOutfit" : {
+          "11" : "punk-jacket",
+          "12" : "geisha-hair",
+          "5" : "eyeliner"
+        },
+        "body" : "pink",
+        "clips" : [
+
+        ],
+        "depth" : 0,
+        "events" : [
+
+        ],
+        "face" : -1,
+        "hidden" : false,
+        "locked" : false,
+        "name" : "Dr. Fauxnana",
+        "presence" : [
+
+        ],
+        "reactions" : [
+
+        ],
+        "rotationSpeed" : 90,
+        "size" : 1,
+        "solo" : false,
+        "speechVoice" : {
+          "automaticMouth" : true,
+          "recipe" : {
+            "compression" : 0,
+            "delayFeedback" : 0,
+            "delayMix" : 0,
+            "delayTime" : 0.12,
+            "distortion" : "none",
+            "distortionMix" : 0,
+            "doubling" : 0,
+            "flavor" : 1,
+            "high" : 0,
+            "low" : 0,
+            "mid" : 0,
+            "name" : "Natural",
+            "outputGainDB" : 0,
+            "pitchCents" : 0,
+            "preset" : "natural",
+            "reverbMix" : 0,
+            "reverbSpace" : "mediumRoom"
+          }
+        },
+        "speed" : 320,
+        "subs" : [
+
+        ],
+        "trackFx" : {
+          "gain" : 1,
+          "high" : 0,
+          "low" : 0,
+          "mid" : 0,
+          "pan" : "follow",
+          "reverb" : 0
+        },
+        "voicePitch" : 0,
+        "voiceSpeed" : 1.05,
+        "wobble" : 7,
+        "x" : 0.74
+      }
+    ],
+    "cropAnchors" : [
+
+    ],
+    "gScale" : 0.6,
+    "gSize" : 1,
+    "gravity" : 1,
+    "imageTracks" : [
+
+    ],
+    "lightTracks" : [
+      {
+        "cues" : [
+          {
+            "dur" : 75,
+            "from" : {
+              "intensity" : 0.7,
+              "size" : 120,
+              "x" : 0.5,
+              "y" : 0.18
+            },
+            "id" : "proof-patrol-key-light-cue",
+            "start" : 0
+          }
+        ],
+        "hidden" : false,
+        "id" : "proof-patrol-key-light",
+        "locked" : false,
+        "name" : "Key Light",
+        "presence" : [
+
+        ]
+      }
+    ],
+    "lights" : [
+      {
+        "x" : 0.5,
+        "y" : 0.18
+      }
+    ],
+    "markers" : [
+
+    ],
+    "reactionLibrary" : [
+
+    ],
+    "rowOrder" : [
+
+    ]
+  },
+  "version" : 4
+}

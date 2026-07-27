@@ -124,7 +124,7 @@ After audio is generated, prefer Banny Studio for visual touch-ups and `retime-m
 
 | Concern | Default Source | Generated Output |
 |---|---|---|
-| Feed URL | `src/split_peel/feed.py` | `runs/<episode_slug>/feed.json` |
+| Research feed URLs | `src/split_peel/feed.py` | `runs/<episode_slug>/feed.json` |
 | ESPN league and scoreboard URL | `src/split_peel/espn.py` | `runs/<episode_slug>/scoreboard.json` |
 | Match normalization, full ESPN slate, and key moments | `src/split_peel/espn.py` | `runs/<episode_slug>/match_context.json` |
 | Show name, tagline, episode rules, preroll, outro effect | `src/split_peel/scriptwriter.py` | `runs/<episode_slug>/script.json` |
@@ -137,6 +137,18 @@ After audio is generated, prefer Banny Studio for visual touch-ups and `retime-m
 | Mouth/eye/motion events | `src/split_peel/audio.py` and `src/split_peel/motion.py` | `stage.characters[].events[]` inside `show.json` |
 
 For `game-week-preview`, `match_context.json` contains a selected `match` plus the full ESPN `matches[]` slate. Preview overlays should come from `matches[]`: up to five fixtures per slate PNG, at most two slate pages, with logo-v-logo rows and kickoff times in UTC. Match-event and recap episodes continue to use the selected `match` for the corner logos, score, and key-moment graphics.
+
+Default research follows this loop:
+
+```text
+Load -> Extract -> Graph -> Index -> Query -> Memory -> Produce show -> Update learning
+```
+
+The load step combines the football-channel parent-url feed with the Falsenine
+bot user-casts feed (`fid=2477947`, limit 20). Falsenine bot casts are labeled
+as fact leads with `factCheckRequired: true`; use them to seed research and idea
+cards, but verify against ESPN, official sources, or producer-confirmed notes
+before scripting a claim as true.
 
 ## Banny CLI Validation And Render
 

@@ -151,6 +151,38 @@ def test_repeated_team_mentions_get_varied_or_deduped_lines():
     assert script["sourceCasts"][0]["pfpUrl"]
 
 
+def test_draft_script_keeps_falsenine_bot_as_fact_check_metadata_not_dialogue_callout():
+    feed = {
+        "researchSources": [{"id": "falsenine-bot", "name": "Falsenine bot account"}],
+        "casts": [
+            {
+                "text": "Arsenal transfer detail from the Falsenine bot.",
+                "timestamp": "2026-07-27T00:01:00.000Z",
+                "author": {"username": "falsenine"},
+                "reactions": {"likes_count": 3},
+                "replies": {"count": 1},
+                "researchSourceId": "falsenine-bot",
+                "researchSource": {"name": "Falsenine bot account"},
+                "factCheckRequired": True,
+            }
+        ],
+    }
+    match_context = {
+        "match": {
+            "shortName": "COV @ ARS",
+            "status": {"description": "Scheduled"},
+            "teams": [{"name": "Arsenal", "abbreviation": "ARS"}, {"name": "Coventry City", "abbreviation": "COV"}],
+        }
+    }
+
+    script = draft_script(feed, match_context=match_context)
+
+    assert script["researchSources"][0]["id"] == "falsenine-bot"
+    assert script["factCheckCasts"][0]["factCheckRequired"] is True
+    assert "verify them" in " ".join(script["beats"])
+    assert all(line.get("sourceUsername") != "falsenine" for line in script["dialogue"])
+
+
 def test_draft_script_uses_instructions_and_memory():
     feed = {"casts": []}
     memory = [{"title": "Previous Banter", "createdAt": "2026-07-20T00:00:00Z", "beats": ["Old bit"]}]
@@ -182,6 +214,42 @@ def test_draft_script_accepts_final_whistle_episode_metadata():
         "Final Whistle with Split & Peel. Every fixture gets a verdict before the group chat does."
     )
     assert "ENG1 Game Week 01 Preview" in script["dialogue"][0]["line"]
+
+
+def test_draft_script_uses_proof_patrol_branch_from_characters():
+    characters = {
+        "characters": [
+            {
+                "id": "perry",
+                "displayName": "Perry Provenance",
+                "personality": ["precise proof investigator"],
+                "preferences": {},
+            },
+            {
+                "id": "fauxnana",
+                "displayName": "Dr. Fauxnana",
+                "personality": ["glamorous manipulator"],
+                "preferences": {},
+            },
+        ]
+    }
+
+    script = draft_script(
+        {"casts": []},
+        characters=characters,
+        episode_title="The First Version",
+        episode_type="general",
+        instructions="Perry catches Dr. Fauxnana using the Backdate Beautifier.",
+    )
+
+    spoken = " ".join(line["line"] for line in script["dialogue"]).lower()
+    assert script["showName"] == "Proof Patrol"
+    assert script["tagline"] == "Originals matter."
+    assert script["preroll"]["type"] == "proof-lab-bumper"
+    assert script["outroEffect"]["type"] == "seal-stamp"
+    assert "backdate beautifier" in spoken
+    assert "does not prove" in spoken
+    assert "football" not in spoken
 
 
 def test_draft_script_accepts_outtake_episode_metadata_and_cold_open():

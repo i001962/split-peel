@@ -34,10 +34,22 @@ def draft_script(
     ranked = rank_match_relevant_casts(feed, match_context)
     characters = characters or DEFAULT_CHARACTERS
     episode_memory = episode_memory or []
-    beats = _extract_beats(ranked, match_context, instructions)
+    is_proof_patrol = _is_proof_patrol_series(characters, show_name)
+    beats = (
+        _extract_proof_patrol_beats(feed, instructions)
+        if is_proof_patrol
+        else _extract_beats(ranked, match_context, instructions)
+    )
     beats = [_sanitize_spoken_text(beat, match_context) for beat in beats]
     provider = _script_provider(script_provider)
-    if provider == "openai":
+    if is_proof_patrol:
+        dialogue = _draft_proof_patrol_dialogue(
+            ranked,
+            characters=characters,
+            episode_memory=episode_memory,
+            instructions=instructions,
+        )
+    elif provider == "openai":
         dialogue = _draft_dialogue_openai(
             ranked,
             duration_sec=duration_sec,
@@ -51,15 +63,23 @@ def draft_script(
         dialogue = _draft_dialogue(ranked, match_context, characters, episode_memory, instructions, episode_type=episode_type)
     else:
         raise RuntimeError(f"unknown script provider: {provider}")
-    metadata = _episode_metadata(
-        match_context=match_context,
-        beats=beats,
-        episode_title=episode_title,
-        episode_type=episode_type,
-        show_name=show_name,
-        tagline=tagline,
+    metadata = (
+        _proof_patrol_metadata(beats, episode_title, episode_type, show_name, tagline)
+        if is_proof_patrol
+        else _episode_metadata(
+            match_context=match_context,
+            beats=beats,
+            episode_title=episode_title,
+            episode_type=episode_type,
+            show_name=show_name,
+            tagline=tagline,
+        )
     )
-    dialogue = _add_house_lines(dialogue, match_context, characters, metadata)
+    dialogue = (
+        _add_proof_patrol_house_lines(dialogue, characters, metadata)
+        if is_proof_patrol
+        else _add_house_lines(dialogue, match_context, characters, metadata)
+    )
     dialogue = _sanitize_spoken_dialogue(dialogue, match_context)
 
     return {
@@ -90,10 +110,18 @@ def draft_script(
             for episode in episode_memory
         ],
         "match": (match_context or {}).get("match"),
+        "researchSources": feed.get("researchSources") or [],
+        "sourceErrors": feed.get("sourceErrors") or [],
         "sourceCasts": _source_casts(ranked, match_context),
         "fallbackCasts": _fallback_casts(ranked, match_context),
+        "factCheckCasts": _fact_check_casts(ranked),
         "dialogue": dialogue,
     }
+
+
+def _is_proof_patrol_series(characters: dict[str, Any], show_name: str) -> bool:
+    ids = set(character_ids(characters))
+    return ("perry" in ids and "fauxnana" in ids) or "proof patrol" in (show_name or "").lower()
 
 
 def _script_provider(script_provider: Optional[str]) -> str:
@@ -111,6 +139,9 @@ def _cast_payload(cast: RankedCast) -> dict[str, Any]:
         "text": cast.text,
         "hash": cast.hash,
         "pfpUrl": cast.pfp_url,
+        "researchSourceId": cast.research_source_id,
+        "researchSourceName": cast.research_source_name,
+        "factCheckRequired": cast.fact_check_required,
     }
 
 
@@ -124,6 +155,10 @@ def _fallback_casts(casts: list[RankedCast], match_context: Optional[dict[str, A
     if not (match_context or {}).get("match"):
         return []
     return [_cast_payload(cast) for cast in casts if cast.match_hits == 0][:8]
+
+
+def _fact_check_casts(casts: list[RankedCast]) -> list[dict[str, Any]]:
+    return [_cast_payload(cast) for cast in casts if cast.fact_check_required][:8]
 
 
 def _extract_beats(
@@ -150,6 +185,9 @@ def _extract_beats(
     if instructions:
         beats.append(f"Episode instructions: {instructions}")
 
+    if any(cast.fact_check_required for cast in casts):
+        beats.append("Falsenine bot casts are available as fact leads; verify them against ESPN, official sources, or producer-confirmed notes before making show claims.")
+
     if "spain" in text or "spanish" in text:
         beats.append("Spain are the main winner/fan-reaction topic.")
     if "messi" in text or "argentina" in text:
@@ -164,6 +202,28 @@ def _extract_beats(
     if not beats:
         beats.append("Football fans are reacting to the latest match discourse.")
 
+    return beats[:6]
+
+
+def _extract_proof_patrol_beats(feed: dict[str, Any], instructions: Optional[str] = None) -> list[str]:
+    beats: list[str] = []
+    if instructions:
+        beats.append(f"Episode instructions: {instructions}")
+
+    items = feed.get("items") if isinstance(feed, dict) else None
+    if isinstance(items, list):
+        for item in items[:3]:
+            if not isinstance(item, dict):
+                continue
+            topic = str(item.get("topic") or "").strip()
+            pattern = str(item.get("manipulationPattern") or "").strip()
+            angle = str(item.get("fictionalizedAngle") or "").strip()
+            if topic or pattern or angle:
+                beats.append(f"X-inspired seed: {topic or pattern}. {angle}")
+
+    beats.append("Proof boundary: a seal can show timing, origin, integrity, or change; it does not prove sincerity or absolute truth.")
+    if not any("backdate" in beat.lower() for beat in beats):
+        beats.append("Default manipulation pattern: a record was edited or backdated after accountability arrived.")
     return beats[:6]
 
 
@@ -215,9 +275,14 @@ def _draft_dialogue_openai(
                         "matchContext": match_context,
                         "characters": _character_prompt_payload(characters),
                         "sourceCasts": [_cast_payload(cast) for cast in casts[:8]],
+                        "factCheckCasts": [_cast_payload(cast) for cast in casts if cast.fact_check_required][:8],
                         "episodeMemoryMetadata": episode_memory or [],
                         "producerInstructions": instructions,
                         "dialogueRules": _dialogue_rules_for_episode(episode_type),
+                        "factCheckRule": (
+                            "Casts marked factCheckRequired are research leads only. Do not present them as verified football "
+                            "facts unless matchContext or producerInstructions corroborate them. Never call the bot a fan."
+                        ),
                     },
                     ensure_ascii=False,
                 ),
@@ -438,6 +503,84 @@ def _house_signoff(match: dict[str, Any], speakers: list[str]) -> str:
     return variants[_variant_index(match, "house-signoff", len(variants))] if match else variants[0]
 
 
+def _add_proof_patrol_house_lines(
+    dialogue: list[dict[str, Any]],
+    characters: dict[str, Any],
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    speakers = character_ids(characters)
+    if not dialogue or len(speakers) < 2:
+        return dialogue
+    show_name = str(metadata.get("showName") or "Proof Patrol")
+    episode_title = str(metadata.get("episodeTitle") or "").strip()
+    tagline = str(metadata.get("tagline") or "Originals matter.").strip()
+    title_clause = f" {episode_title}." if episode_title else ""
+    wrapped = [
+        {
+            "speaker": speakers[0],
+            "line": f"Welcome to {show_name}.{title_clause} {tagline} I am Perry Provenance, and today's first question is simple: show me the first version.",
+            "tone": "crisp investigative open, dry and principled",
+        },
+        *dialogue,
+        {
+            "speaker": speakers[1],
+            "line": "Like, subscribe, and preserve your originals before someone gives reality a makeover.",
+            "tone": "glamorous villain signoff, playful and slightly dangerous",
+        },
+    ]
+    return _retime_dialogue(wrapped)
+
+
+def _proof_patrol_metadata(
+    beats: list[str],
+    episode_title: Optional[str],
+    episode_type: str,
+    show_name: str,
+    tagline: str,
+) -> dict[str, Any]:
+    resolved_show_name = (show_name or "").strip()
+    if not resolved_show_name or resolved_show_name == DEFAULT_SHOW_NAME:
+        resolved_show_name = "Proof Patrol"
+    resolved_tagline = (tagline or "").strip()
+    if not resolved_tagline or resolved_tagline == DEFAULT_TAGLINE:
+        resolved_tagline = "Originals matter."
+    resolved_episode_title = (episode_title or "").strip() or _proof_patrol_title_from_beats(beats)
+    resolved_episode_type = (episode_type or "general").strip()
+    return {
+        "showName": resolved_show_name,
+        "episodeTitle": resolved_episode_title,
+        "episodeType": resolved_episode_type,
+        "tagline": resolved_tagline,
+        "preroll": {
+            "name": f"{resolved_show_name} reusable preroll",
+            "type": "proof-lab-bumper",
+            "durationSec": 6,
+            "musicDirection": "quick investigative sting, scanner chirp, soft seal stamp",
+            "visualDirection": "Proof lab scene with Perry at the archive console, Fauxnana's glam machine glowing nearby, title lockup centered.",
+            "voiceover": f"{resolved_show_name}. {resolved_tagline}",
+            "dynamicFields": ["episodeTitle", "proofMechanism", "tamperAlert"],
+        },
+        "outroEffect": {
+            "type": "seal-stamp",
+            "enabled": True,
+            "durationSec": 0.85,
+            "audioDirection": "rubber stamp hit, scanner blip, tiny paper flutter",
+            "visualDirection": "proof seal stamps onto the final frame, then a brief tamper-alert flicker",
+        },
+    }
+
+
+def _proof_patrol_title_from_beats(beats: list[str]) -> str:
+    joined = " ".join(beats).lower()
+    if "backdate" in joined:
+        return "The Backdate Beautifier"
+    if "synthetic receipt" in joined or "receipt" in joined:
+        return "Receipt Theater"
+    if "edited" in joined or "tamper" in joined:
+        return "The First Version"
+    return "Originals Matter"
+
+
 def _episode_metadata(
     match_context: Optional[dict[str, Any]],
     beats: list[str],
@@ -602,6 +745,117 @@ def _team_spoken_replacements(match: dict[str, Any]) -> list[tuple[str, str]]:
     return sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True)
 
 
+def _draft_proof_patrol_dialogue(
+    casts: list[RankedCast],
+    characters: Optional[dict[str, Any]] = None,
+    episode_memory: Optional[list[dict[str, Any]]] = None,
+    instructions: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    characters = characters or DEFAULT_CHARACTERS
+    speakers = character_ids(characters)
+    if len(speakers) < 2:
+        return []
+
+    perry = "perry" if "perry" in speakers else speakers[0]
+    fauxnana = "fauxnana" if "fauxnana" in speakers else speakers[1]
+    prompt = (instructions or "").lower()
+
+    if "backdate" in prompt or "apology" in prompt:
+        lines = [
+            (
+                fauxnana,
+                "Behold, Perry darling: the Backdate Beautifier. It makes an apology look mature, rested, and several hours older than the scandal.",
+                "lush villain reveal, proud of the machine",
+            ),
+            (
+                perry,
+                "You made a fake public apology look like it existed before anyone was angry.",
+                "dry, precise accusation",
+            ),
+            (
+                fauxnana,
+                "I prefer to say I gave accountability a head start.",
+                "teasing, persuasive",
+            ),
+            (
+                perry,
+                "The public receipt says version one was sealed at nine oh four. Your glamorous version appears at nine oh seven with three new paragraphs and a halo.",
+                "controlled proof readout",
+            ),
+            (
+                fauxnana,
+                "The halo tested beautifully.",
+                "small proud aside",
+            ),
+            (
+                perry,
+                "The seal does not prove the apology is sincere. It proves when the record existed, where it came from, and that someone edited it after the fact.",
+                "clear moral boundary without lecturing",
+            ),
+            (
+                fauxnana,
+                "So the truth survives, but with terrible lighting.",
+                "witty disappointment",
+            ),
+            (
+                perry,
+                "Originals are allowed to be unflattering. That is why they are useful.",
+                "final evidence beat",
+            ),
+        ]
+    elif casts:
+        source = casts[0]
+        seed = _clean_spoken_line(source.text) or "a suspiciously confident timeline claim"
+        lines = [
+            (fauxnana, f"The timeline has selected its favorite version: {seed}", "glossy trend setup"),
+            (perry, "A favorite version is not the first version.", "dry correction"),
+            (fauxnana, "First versions are so often underdressed.", "teasing"),
+            (perry, "Then we check the seal, the source, and the edit trail before anyone crowns a screenshot king.", "precise"),
+            (fauxnana, "You make verification sound like paperwork with cheekbones.", "playful"),
+            (perry, "I make it sound like the part where ordinary people stop getting rewritten.", "principled button"),
+        ]
+    else:
+        lines = [
+            (
+                fauxnana,
+                "Perry, darling, originals are so uncurated. I made a cleaner version of the record for public comfort.",
+                "seductive premise",
+            ),
+            (
+                perry,
+                "You removed the timestamp, the source, and the sentence that made everyone uncomfortable.",
+                "dry evidence read",
+            ),
+            (
+                fauxnana,
+                "Exactly. The truth needed better pacing.",
+                "theatrical",
+            ),
+            (
+                perry,
+                "The provenance badge shows the first record existed before your edit. It does not decide who is right. It shows what changed.",
+                "calm proof boundary",
+            ),
+            (
+                fauxnana,
+                "A tragic day for vibes-based document management.",
+                "mock sorrow",
+            ),
+            (
+                perry,
+                "A useful day for everyone who kept the receipt.",
+                "clean final beat",
+            ),
+        ]
+
+    start = 0.5
+    dialogue: list[dict[str, Any]] = []
+    for speaker, line, tone in lines:
+        dialogue.append({"speaker": speaker, "line": line, "tone": tone, "start": round(start, 2)})
+        start += max(3.0, len(line.split()) * 0.38)
+    return dialogue
+
+
 def _draft_dialogue(
     casts: list[RankedCast],
     match_context: Optional[dict[str, Any]] = None,
@@ -615,6 +869,7 @@ def _draft_dialogue(
     lines = _opening_lines(match_context, speakers, characters, episode_type=episode_type)
     match = (match_context or {}).get("match")
     match_relevant_casts = [cast for cast in casts if cast.match_hits > 0] if match else casts
+    dialogue_casts = [cast for cast in match_relevant_casts if not cast.fact_check_required]
     social_allowed = _social_references_allowed(instructions)
 
     if episode_type == "game-week-preview":
@@ -622,11 +877,11 @@ def _draft_dialogue(
     elif match:
         lines.extend(_key_moment_lines(match, speakers))
 
-    if match and not match_relevant_casts:
+    if match and not dialogue_casts:
         lines.extend(_no_relevant_cast_lines(match, speakers, social_allowed))
 
     seen_paraphrases: set[str] = set()
-    for cast in match_relevant_casts:
+    for cast in dialogue_casts:
         paraphrase = _paraphrase_cast(cast, match_context)
         paraphrase_key = _paraphrase_key(paraphrase)
         if paraphrase_key in seen_paraphrases:

@@ -24,6 +24,9 @@ class BannyPackageError(RuntimeError):
     pass
 
 
+LATEST_SHOW_SCHEMA_VERSION = 4
+
+
 def write_starter_show(out: Path, character_count: int = 2, overwrite: bool = False) -> None:
     if out.exists():
         if not overwrite:
@@ -75,7 +78,7 @@ def write_starter_show(out: Path, character_count: int = 2, overwrite: bool = Fa
         )
 
     show = {
-        "version": 3,
+        "version": LATEST_SHOW_SCHEMA_VERSION,
         "assets": [],
         "settings": {"activeScene": 0, "lightSize": 0, "frameW": 16, "frameH": 9},
         "show": [{"sceneID": "", "name": "Starter", "from": 0, "to": 1}],
@@ -138,6 +141,7 @@ def roundtrip_package(template: Path, out: Path) -> None:
         tmp_path = Path(tmp)
         _copy_package_to_dir(template, tmp_path)
         _validate_show_json(tmp_path / "show.json")
+        _upgrade_show_schema(tmp_path / "show.json")
         _zip_directory(tmp_path, out)
 
 
@@ -150,6 +154,7 @@ def unpack_package(template: Path, out: Path, overwrite: bool = False) -> None:
     out.mkdir(parents=True)
     _copy_package_to_dir(template, out)
     _validate_show_json(out / "show.json")
+    _upgrade_show_schema(out / "show.json")
 
 
 def retime_mouth_events(template: Path, out: Path, overwrite: bool = False) -> None:
@@ -166,6 +171,7 @@ def retime_mouth_events(template: Path, out: Path, overwrite: bool = False) -> N
         shutil.copytree(template, out)
         _validate_show_json(out / "show.json")
         _retime_mouth_events_in_dir(out)
+        _upgrade_show_schema(out / "show.json")
         return
 
     with tempfile.TemporaryDirectory(prefix="split-peel-") as tmp:
@@ -174,6 +180,7 @@ def retime_mouth_events(template: Path, out: Path, overwrite: bool = False) -> N
             archive.extractall(tmp_path)
         _validate_show_json(tmp_path / "show.json")
         _retime_mouth_events_in_dir(tmp_path)
+        _upgrade_show_schema(tmp_path / "show.json")
         _zip_directory(tmp_path, out)
 
 
@@ -245,7 +252,7 @@ def build_show_from_registry(
     with tempfile.TemporaryDirectory(prefix="split-peel-compose-") as tmp:
         tmp_path = Path(tmp)
         show = {
-            "version": 3,
+            "version": LATEST_SHOW_SCHEMA_VERSION,
             "assets": registry.get("assets") or [],
             "settings": preset.get("settings") or {"activeScene": 0, "lightSize": 0, "frameW": 16, "frameH": 9},
             "show": preset.get("show") or [{"sceneID": "", "name": str(preset.get("name") or scene_preset_id), "from": 0, "to": 1}],
@@ -310,8 +317,9 @@ def _apply_script_to_package(
     dialogue_end = max(clip.start + clip.duration for clip in clips)
     effect_end = _append_outro_effect(stage, script, audio_dir, dialogue_end)
     duration = max(dialogue_end, effect_end) + 1.0
-    _replace_character_events(stage, clips, duration)
-    _replace_character_subtitles(stage, clips)
+    speaker_map = _speaker_character_index(characters)
+    _replace_character_events(stage, clips, duration, speaker_map)
+    _replace_character_subtitles(stage, clips, speaker_map)
     performance_end = apply_performance_plan(stage, load_performance_plan(performance_plan_path), voice_manifest_path)
     if performance_end:
         duration = max(duration, performance_end + 1.0)
@@ -343,11 +351,7 @@ def _copy_package_to_dir(source: Path, destination: Path) -> None:
 
 def _write_package_output(package_dir: Path, out: Path) -> None:
     show_path = package_dir / "show.json"
-    if show_path.exists():
-        show = json.loads(show_path.read_text(encoding="utf-8"))
-        if show.get("version") != 4:
-            show["version"] = 4
-            show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _upgrade_show_schema(show_path)
     if out.exists():
         if out.is_dir():
             shutil.rmtree(out)
@@ -544,30 +548,50 @@ def _write_static_disconnect_wav(path: Path, duration: float, sample_rate: int =
             wav.writeframesraw(sample.to_bytes(2, byteorder="little", signed=True))
 
 
-def _replace_character_events(stage: dict[str, Any], clips: list[VoiceClip], duration: float) -> None:
+def _replace_character_events(
+    stage: dict[str, Any],
+    clips: list[VoiceClip],
+    duration: float,
+    speaker_character_index: Optional[dict[str, int]] = None,
+) -> None:
     characters = stage.get("characters")
     if not isinstance(characters, list) or not characters:
         raise BannyPackageError("stage is missing characters")
 
-    events_by_character = build_character_events(clips, len(characters), duration)
+    events_by_character = build_character_events(clips, len(characters), duration, speaker_character_index)
     for character, events in zip(characters, events_by_character):
         character["events"] = events
 
 
-def _replace_character_subtitles(stage: dict[str, Any], clips: list[VoiceClip]) -> None:
+def _replace_character_subtitles(
+    stage: dict[str, Any],
+    clips: list[VoiceClip],
+    speaker_character_index: Optional[dict[str, int]] = None,
+) -> None:
     characters = stage.get("characters")
     if not isinstance(characters, list) or not characters:
         raise BannyPackageError("stage is missing characters")
 
     subs_by_character: list[list[dict[str, object]]] = [[] for _ in range(len(characters))]
+    speaker_map = speaker_character_index or SPEAKER_CHARACTER_INDEX
     for clip in clips:
-        character_index = SPEAKER_CHARACTER_INDEX.get(clip.speaker, 0)
+        character_index = speaker_map.get(clip.speaker, 0)
         if character_index >= len(subs_by_character):
             continue
         subs_by_character[character_index].extend(_caption_segments(clip.line, clip.start, clip.duration))
 
     for character, subs in zip(characters, subs_by_character):
         character["subs"] = subs
+
+
+def _speaker_character_index(characters: Optional[dict[str, Any]]) -> dict[str, int]:
+    ids = character_ids(characters or {})
+    if not ids:
+        return SPEAKER_CHARACTER_INDEX
+    speaker_map = {speaker_id: index for index, speaker_id in enumerate(ids)}
+    for speaker_id, index in SPEAKER_CHARACTER_INDEX.items():
+        speaker_map.setdefault(speaker_id, index)
+    return speaker_map
 
 
 def _apply_character_appearance(stage: dict[str, Any], characters: Optional[dict[str, Any]]) -> None:
@@ -664,10 +688,8 @@ def _extend_show_duration(show: dict[str, Any], duration: float) -> None:
             scene["to"] = round(duration, 3)
 
     stage = show.get("stage") or {}
-    for track_name in ("backgroundTracks", "lightTracks"):
+    for track_name in ("lightTracks",):
         for track in stage.get(track_name) or []:
-            if track_name == "backgroundTracks" and track.get("id") == "camera-beats":
-                continue
             for cue in track.get("cues") or []:
                 cue["start"] = min(float(cue.get("start") or 0), round(duration, 3))
                 cue["dur"] = round(duration - float(cue.get("start") or 0), 3)
@@ -826,6 +848,16 @@ def _validate_show_json(path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if "stage" not in payload:
         raise BannyPackageError("show.json is missing stage")
+
+
+def _upgrade_show_schema(path: Path) -> None:
+    if not path.exists():
+        return
+    show = json.loads(path.read_text(encoding="utf-8"))
+    if show.get("version") == LATEST_SHOW_SCHEMA_VERSION:
+        return
+    show["version"] = LATEST_SHOW_SCHEMA_VERSION
+    path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _zip_directory(source: Path, out: Path) -> None:

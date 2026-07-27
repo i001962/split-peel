@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from split_peel.package import (
+    LATEST_SHOW_SCHEMA_VERSION,
     _apply_character_appearance,
     _resolve_overlay_anchors,
     _set_background_audio_gain,
@@ -23,7 +24,7 @@ from split_peel.audio import VoiceClip
 from split_peel.package_ids import make_id
 
 
-def test_roundtrip_package_preserves_show_json(tmp_path: Path):
+def test_roundtrip_package_writes_latest_show_schema(tmp_path: Path):
     template = tmp_path / "template.bs"
     output = tmp_path / "output.bs"
     show = {
@@ -43,10 +44,11 @@ def test_roundtrip_package_preserves_show_json(tmp_path: Path):
 
     assert inspect_package(output)["hasShowJson"] is True
     with zipfile.ZipFile(output) as archive:
-        assert json.loads(archive.read("show.json")) == show
+        rendered = json.loads(archive.read("show.json"))
+    assert rendered == {**show, "version": LATEST_SHOW_SCHEMA_VERSION}
 
 
-def test_unpack_package_extracts_show_folder(tmp_path: Path):
+def test_unpack_package_extracts_latest_show_schema_folder(tmp_path: Path):
     template = tmp_path / "template.bs"
     output = tmp_path / "output.bannyshow"
     show = {
@@ -64,7 +66,7 @@ def test_unpack_package_extracts_show_folder(tmp_path: Path):
 
     unpack_package(template, output)
 
-    assert json.loads((output / "show.json").read_text(encoding="utf-8")) == show
+    assert json.loads((output / "show.json").read_text(encoding="utf-8")) == {**show, "version": LATEST_SHOW_SCHEMA_VERSION}
     assert (output / "assets" / "background.png").exists()
 
 
@@ -74,7 +76,7 @@ def test_write_starter_show_creates_editable_bannyshow(tmp_path: Path):
     write_starter_show(output, character_count=2)
 
     show = json.loads((output / "show.json").read_text(encoding="utf-8"))
-    assert show["version"] == 3
+    assert show["version"] == LATEST_SHOW_SCHEMA_VERSION
     assert show["stage"]["characters"][0]["name"] == "Split"
     assert show["stage"]["characters"][1]["name"] == "Peel"
     assert show["stage"]["characters"][0]["armedGroups"] == ["move", "depth", "tilt", "talk", "blink", "jump", "spin", "zoom"]
@@ -149,6 +151,20 @@ def test_replace_character_subtitles_uses_dialogue_timing(monkeypatch):
         {"dur": 1.167, "start": 2.333, "text": "words to split"},
     ]
     assert stage["characters"][1]["subs"] == [{"dur": 1.6, "start": 2.0, "text": "Peel line"}]
+
+
+def test_replace_character_subtitles_uses_custom_speaker_order(monkeypatch):
+    stage = {"characters": [{"subs": []}, {"subs": []}]}
+    monkeypatch.setenv("SPLIT_PEEL_CAPTION_MAX_CHARS", "40")
+    clips = [
+        VoiceClip("perry1", "perry", "Perry line", 0.5, 1.0, []),
+        VoiceClip("faux1", "fauxnana", "Fauxnana line", 2.0, 1.0, []),
+    ]
+
+    _replace_character_subtitles(stage, clips, {"perry": 0, "fauxnana": 1})
+
+    assert stage["characters"][0]["subs"] == [{"dur": 1.0, "start": 0.5, "text": "Perry line"}]
+    assert stage["characters"][1]["subs"] == [{"dur": 1.0, "start": 2.0, "text": "Fauxnana line"}]
 
 
 def test_apply_character_appearance_sets_split_default_look():
@@ -443,10 +459,11 @@ def test_build_show_applies_script_anchored_reaction_and_camera_plan(tmp_path: P
     assert stage["reactionLibrary"][0]["id"] == "wide-eyes-open-mouth"
     assert stage["characters"][1]["reactions"][0]["reactionID"] == "wide-eyes-open-mouth"
     assert stage["characters"][1]["reactions"][0]["start"] == 3.25
-    camera_track = stage["backgroundTracks"][-1]
-    assert camera_track["id"] == "camera-beats"
-    assert camera_track["cues"][0]["dur"] == 1.2
-    assert camera_track["cues"][0]["camFrom"] == {"x": 0.68, "y": 0.48, "zoom": 2.0}
+    scenes_track = stage["backgroundTracks"][0]
+    assert scenes_track["name"] == "Scenes"
+    assert len(scenes_track["cues"]) == 2
+    assert scenes_track["cues"][1]["dur"] == 2.2
+    assert scenes_track["cues"][1]["camFrom"] == {"x": 0.68, "y": 0.48, "zoom": 2.0}
     assert rendered["show"][0]["to"] == 5.45
 
 

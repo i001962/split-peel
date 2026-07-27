@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 
 FOOTBALL_PARENT_URL = "chain://eip155:1/erc721:0x7abfe142031532e1ad0e46f971cc0ef7cf4b98b0"
+FALSENINE_BOT_FID = "2477947"
 
 
 def football_feed_url(limit: int = 100) -> str:
@@ -18,7 +19,13 @@ def football_feed_url(limit: int = 100) -> str:
     return f"https://haatz.quilibrium.com/v2/farcaster/feed/parent_urls?{query}"
 
 
+def farcaster_user_casts_url(fid: str = FALSENINE_BOT_FID, limit: int = 20) -> str:
+    query = urllib.parse.urlencode({"fid": fid, "limit": limit})
+    return f"https://haatz.quilibrium.com/v2/farcaster/feed/user/casts?{query}"
+
+
 DEFAULT_FOOTBALL_FEED_URL = football_feed_url()
+DEFAULT_FALSENINE_BOT_FEED_URL = farcaster_user_casts_url()
 FALLBACK_FOOTBALL_FEED_URLS = ()
 
 FOOTBALL_TERMS = {
@@ -51,6 +58,9 @@ class RankedCast:
     match_hits: int = 0
     hash: str = ""
     pfp_url: str = ""
+    research_source_id: str = ""
+    research_source_name: str = ""
+    fact_check_required: bool = False
 
 
 def fetch_feed(url: str = DEFAULT_FOOTBALL_FEED_URL, timeout: int = 30) -> dict[str, Any]:
@@ -74,6 +84,71 @@ def fetch_feed(url: str = DEFAULT_FOOTBALL_FEED_URL, timeout: int = 30) -> dict[
                 raise
 
     raise RuntimeError(f"failed to fetch football feed: {last_error}")
+
+
+def fetch_research_feed(
+    feed_url: str = DEFAULT_FOOTBALL_FEED_URL,
+    *,
+    include_falsenine_bot: bool = True,
+    falsenine_bot_feed_url: str = DEFAULT_FALSENINE_BOT_FEED_URL,
+    timeout: int = 30,
+) -> dict[str, Any]:
+    sources = [
+        {
+            "id": "football-channel",
+            "name": "Farcaster football channel",
+            "kind": "farcaster-parent-url",
+            "url": feed_url,
+            "factCheckRequired": False,
+            "role": "fan-texture",
+        }
+    ]
+    if include_falsenine_bot:
+        sources.append(
+            {
+                "id": "falsenine-bot",
+                "name": "Falsenine bot account",
+                "kind": "farcaster-user-casts",
+                "url": falsenine_bot_feed_url,
+                "fid": FALSENINE_BOT_FID,
+                "factCheckRequired": True,
+                "role": "fact-leads",
+            }
+        )
+
+    merged_casts: list[dict[str, Any]] = []
+    source_metadata = []
+    source_errors = []
+    seen: set[str] = set()
+    for index, source in enumerate(sources):
+        try:
+            payload = fetch_feed(str(source["url"]), timeout=timeout)
+        except Exception as error:
+            if index == 0:
+                raise
+            source_errors.append({"sourceId": source["id"], "error": str(error)})
+            continue
+
+        casts = payload.get("casts") or []
+        source_metadata.append({**source, "castCount": len(casts)})
+        for cast in casts:
+            if not isinstance(cast, dict):
+                continue
+            key = _cast_key(cast)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged_casts.append(_with_research_source(cast, source))
+
+    research_graph = _build_research_graph(source_metadata, merged_casts)
+    return {
+        "casts": merged_casts,
+        "researchSources": source_metadata,
+        "sourceErrors": source_errors,
+        "researchLoop": ["load", "extract", "graph", "index", "query", "memory", "produce-show", "update-learning"],
+        "researchGraph": research_graph,
+        "researchIndex": _build_research_index(merged_casts),
+    }
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -132,6 +207,9 @@ def rank_casts(
                 match_hits=match_hits,
                 hash=str(cast.get("hash") or ""),
                 pfp_url=str(author.get("pfp_url") or ""),
+                research_source_id=str(cast.get("researchSourceId") or ""),
+                research_source_name=str((cast.get("researchSource") or {}).get("name") or ""),
+                fact_check_required=bool(cast.get("factCheckRequired", False)),
             )
         )
 
@@ -180,3 +258,57 @@ def _count_term_hits(text_lower: str, terms: set[str]) -> int:
 
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+def _cast_key(cast: dict[str, Any]) -> str:
+    return str(cast.get("hash") or "").strip() or _normalize_text(str(cast.get("text") or ""))
+
+
+def _with_research_source(cast: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **cast,
+        "researchSourceId": source["id"],
+        "researchSource": {
+            "id": source["id"],
+            "name": source["name"],
+            "kind": source["kind"],
+            "role": source["role"],
+            "url": source["url"],
+            **({"fid": source["fid"]} if source.get("fid") else {}),
+        },
+        "factCheckRequired": bool(source["factCheckRequired"]),
+    }
+
+
+def _build_research_graph(sources: list[dict[str, Any]], casts: list[dict[str, Any]]) -> dict[str, Any]:
+    nodes = [
+        {
+            "id": f"source:{source['id']}",
+            "type": "source",
+            "label": source["name"],
+            "factCheckRequired": bool(source["factCheckRequired"]),
+        }
+        for source in sources
+    ]
+    edges = []
+    for cast in casts:
+        cast_id = f"cast:{_cast_key(cast)}"
+        nodes.append(
+            {
+                "id": cast_id,
+                "type": "cast",
+                "label": str((cast.get("author") or {}).get("username") or "unknown"),
+                "factCheckRequired": bool(cast.get("factCheckRequired", False)),
+            }
+        )
+        edges.append({"from": f"source:{cast.get('researchSourceId')}", "to": cast_id, "type": "published"})
+    return {"nodes": nodes, "edges": edges}
+
+
+def _build_research_index(casts: list[dict[str, Any]]) -> dict[str, Any]:
+    terms: dict[str, list[str]] = {}
+    for cast in casts:
+        cast_id = f"cast:{_cast_key(cast)}"
+        for term in _terms_from_value(cast.get("text")):
+            terms.setdefault(term, []).append(cast_id)
+    return {"terms": {term: sorted(set(ids)) for term, ids in sorted(terms.items())}}

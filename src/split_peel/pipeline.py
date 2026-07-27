@@ -16,7 +16,7 @@ from split_peel.espn import (
     normalize_scoreboard,
     scoreboard_url_for_league,
 )
-from split_peel.feed import DEFAULT_FOOTBALL_FEED_URL, fetch_feed, write_json
+from split_peel.feed import DEFAULT_FALSENINE_BOT_FEED_URL, DEFAULT_FOOTBALL_FEED_URL, fetch_research_feed, write_json
 from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_episode_memory
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
@@ -52,6 +52,8 @@ class PipelineConfig:
     tagline: str = "The whistle goes, the takes stay loud."
     background_gain: Optional[float] = None
     feed_url: str = DEFAULT_FOOTBALL_FEED_URL
+    falsenine_bot_feed_url: str = DEFAULT_FALSENINE_BOT_FEED_URL
+    include_falsenine_bot: bool = True
     no_feed: bool = False
     espn_league: str = DEFAULT_ESPN_LEAGUE
     scoreboard_url: Optional[str] = None
@@ -117,6 +119,8 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         tagline=str(payload.get("tagline") or "The whistle goes, the takes stay loud."),
         background_gain=_optional_float(payload.get("background_gain")),
         feed_url=str(payload.get("feed_url") or DEFAULT_FOOTBALL_FEED_URL),
+        falsenine_bot_feed_url=str(payload.get("falsenine_bot_feed_url") or DEFAULT_FALSENINE_BOT_FEED_URL),
+        include_falsenine_bot=bool(payload.get("include_falsenine_bot", True)),
         no_feed=bool(payload.get("no_feed", False)),
         espn_league=str(payload.get("espn_league") or DEFAULT_ESPN_LEAGUE),
         scoreboard_url=payload.get("scoreboard_url"),
@@ -174,6 +178,8 @@ def write_pipeline_config_template(path: Path) -> None:
         "tagline": "The whistle goes, the takes stay loud.",
         "background_gain": 0.22,
         "feed_url": DEFAULT_FOOTBALL_FEED_URL,
+        "falsenine_bot_feed_url": DEFAULT_FALSENINE_BOT_FEED_URL,
+        "include_falsenine_bot": True,
         "no_feed": False,
         "espn_league": DEFAULT_ESPN_LEAGUE,
         "match_id": None,
@@ -268,6 +274,8 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         "tagline": config.tagline,
         "background_gain": config.background_gain,
         "feed_url": config.feed_url,
+        "falsenine_bot_feed_url": config.falsenine_bot_feed_url,
+        "include_falsenine_bot": config.include_falsenine_bot,
         "no_feed": config.no_feed,
         "espn_league": None if config.no_espn else config.espn_league,
         "overwrite_script": config.overwrite_script,
@@ -305,7 +313,15 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     overlays_path = config.overlays_path
     match_context = None
 
-    feed = {"casts": []} if config.no_feed else fetch_feed(config.feed_url)
+    feed = (
+        {"casts": []}
+        if config.no_feed
+        else fetch_research_feed(
+            config.feed_url,
+            include_falsenine_bot=config.include_falsenine_bot,
+            falsenine_bot_feed_url=config.falsenine_bot_feed_url,
+        )
+    )
     write_json(feed_path, feed)
 
     if not config.no_espn:

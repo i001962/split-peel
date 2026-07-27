@@ -72,3 +72,38 @@ Then recommend the strongest idea using:
 - Freshness against memory
 
 Before scripting, make sure the winning idea can become punchy spoken lines, Banny-friendly visual cues, and a clear short-form episode.
+
+Episode completion reflection:
+
+```text
+We are done with this episode. Please record a production reflection for future learnings.
+
+Episode:
+Package/output:
+Brainstorm started:
+First draft saved:
+Script locked:
+Published/uploaded:
+What I liked:
+What felt weak:
+Best joke/character moment:
+Best visual/cartoon moment:
+What fans would probably love:
+What we should avoid next time:
+What should become a recurring bit or bible rule:
+Any notes for Split:
+Any notes for Peel:
+
+Please write this to runs/<episode-slug>/reflection.md and promote only durable lessons into docs/production-learnings.md or the show bible if they should affect future episodes.
+
+Include a `## Production Timing` section in the reflection with these four
+timestamps: brainstorm started, first draft saved, script locked, and private
+upload completed. Also calculate `brainstorm to upload`. If the brainstorm
+start is unavailable, use the earliest reliable run artifact and label the
+timing as an artifact-based proxy.
+```
+
+`runs/<episode-slug>/reflection.md` is the episode-specific journal. Promote a
+lesson to `docs/production-learnings.md`, `docs/final-whistle-show-bible.md`,
+or `docs/final-whistle-writers-room-process.md` only when it should change
+future work.

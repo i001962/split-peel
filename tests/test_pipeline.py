@@ -49,6 +49,8 @@ def test_load_pipeline_config_resolves_relative_paths_from_cwd(tmp_path: Path, m
     assert config.duration_sec == 45
     assert config.background_gain == 0.18
     assert config.no_feed is False
+    assert config.include_falsenine_bot is True
+    assert "fid=2477947" in config.falsenine_bot_feed_url
     assert config.no_espn is True
     assert config.overwrite_script is False
     assert config.draft_only is True
@@ -87,6 +89,8 @@ def test_build_pipeline_plan_lists_artifacts_and_stages(tmp_path: Path, monkeypa
     assert plan["artifacts"]["output_movie"] == str(tmp_path / "outputs/demo.mp4")
     assert plan["artifacts"]["movie_handoff"] == str(tmp_path / "runs/demo/movie-export-handoff.md")
     assert plan["overwrite_script"] is False
+    assert plan["include_falsenine_bot"] is True
+    assert "fid=2477947" in plan["falsenine_bot_feed_url"]
 
 
 def test_build_pipeline_plan_includes_banny_stages_when_enabled(tmp_path: Path, monkeypatch):

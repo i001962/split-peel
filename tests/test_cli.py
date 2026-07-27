@@ -92,7 +92,7 @@ def test_make_draft_only_writes_script_without_building(tmp_path: Path, monkeypa
     run_dir = tmp_path / "run"
     script_path = run_dir / "script.json"
     output = tmp_path / "episode.bs"
-    monkeypatch.setattr("split_peel.cli.fetch_feed", lambda url: {"casts": []})
+    monkeypatch.setattr("split_peel.cli.fetch_research_feed", lambda *args, **kwargs: {"casts": []})
 
     def fail_build(*args, **kwargs):
         raise AssertionError("draft-only should not build or synthesize audio")
@@ -128,8 +128,8 @@ def test_ideas_command_writes_topic_plan_without_building(tmp_path: Path, monkey
         lambda woeid, bearer_token=None: {"data": [{"trend_name": "Bayern transfer", "tweet_count": 90000}]},
     )
     monkeypatch.setattr(
-        "split_peel.cli.fetch_feed",
-        lambda url: {
+        "split_peel.cli.fetch_research_feed",
+        lambda *args, **kwargs: {
             "casts": [
                 {
                     "text": "Bayern transfer rumor discourse is already impossible.",
@@ -174,7 +174,7 @@ def test_make_writes_voice_manifest_and_builds_from_reused_audio(tmp_path: Path,
         archive.writestr("show.json", json.dumps(show))
         archive.writestr(f"audio/{clip_id}.wav", _test_wav_bytes([(0.0, 0.3, 7000)]))
 
-    monkeypatch.setattr("split_peel.cli.fetch_feed", lambda url: {"casts": []})
+    monkeypatch.setattr("split_peel.cli.fetch_research_feed", lambda *args, **kwargs: {"casts": []})
     monkeypatch.setattr(
         "split_peel.cli.draft_script",
         lambda *args, **kwargs: {"dialogue": [line], "outroEffect": {"enabled": False}},

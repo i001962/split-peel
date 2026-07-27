@@ -60,6 +60,21 @@ turning this into a filing system.
   changed.
 - Always run the upload command from repo root, not from the Banny Studio source
   checkout.
+- When ElevenLabs or another synthetic voice provider is used, set YouTube's
+  `containsSyntheticMedia` declaration on upload.
+
+## Final Whistle Desk Builds
+
+- When the brief calls for the Falsenine set, build from
+  `outputs/falsenine-roast-desk.bannyshow`; it contains the intended gantry
+  desk, two-shot, and close-up source assets. Do not substitute the generic
+  stadium background.
+- Banny schema v4 allows exactly one `Scenes` background track. Speaker cuts
+  must become adjacent camera cues on that track, not a second camera
+  background track.
+- If a macOS app picker rejects an otherwise valid Banny MP4, make a
+  compatibility copy with `avconvert --preset Preset1920x1080` and clear a
+  stale `com.apple.quarantine` attribute before concluding the export is bad.
 
 ## Reflection Template
 
@@ -70,6 +85,18 @@ Date:
 Package:
 MP4:
 Published:
+
+## Production Timing
+
+Brainstorm started:
+First draft saved:
+Script locked:
+Private upload completed:
+Brainstorm to upload:
+
+If the original brainstorm timestamp is unavailable, use the earliest reliable
+run artifact and label the result as an artifact-based proxy. The four required
+milestones are brainstorm start, first draft, script lock, and private upload.
 
 ## What Shipped
 
