@@ -157,6 +157,18 @@ split-peel build-show \
   --skip-voice
 ```
 
+Reusable ad callout from a cast-shaped JSON:
+
+```bash
+split-peel build-ad-callout \
+  --ad examples/mock-ad-cast.json \
+  --script-out runs/ad-callout/script.json \
+  --overlays-out runs/ad-callout/overlays.json \
+  --asset-dir runs/ad-callout/assets
+```
+
+Edit `examples/mock-ad-cast.json` for each sponsor. The source is shaped like a Farcaster cast: `cast.text` is the ad copy, `cast.author.fid` identifies the author, and `cast.author.pfpUrl` or `cast.author.pfpPath` can supply the PFP image. If no PFP image is available yet, the generator renders a deterministic placeholder keyed by the fid so the mock track is still usable. The command writes a reusable ad-callout script fragment plus an overlay manifest with the cartoon speech-bubble callout card.
+
 Add foreground media such as a desk, lower-third, or team logos with an overlay manifest:
 
 ```bash

@@ -12,8 +12,9 @@ Use this repo as the execution engine for Banny Studio episode builds. Prefer th
 1. Check the working tree before editing: `git status --short`.
 2. Read [README.md](README.md) for setup, environment variables, command examples, script shape, character configuration, overlays, and package mutation notes.
 3. Read [docs/studio-development-pipeline.md](docs/studio-development-pipeline.md) when the user wants a repeatable episode build, dry run, QA checklist, movie handoff, or Hubs-linked workflow.
-4. Read [docs/hubs-board-blueprint.md](docs/hubs-board-blueprint.md) only when the user asks to plan or operate the Hubs board flow.
-5. Read [references/banny-cli.md](references/banny-cli.md) when the task involves Banny CLI setup, wardrobe/catalog choices, validation, preview frames, headless mp4 render, or `.bs` format details beyond this repo's pipeline.
+4. Read [docs/final-whistle-show-bible.md](docs/final-whistle-show-bible.md) and [docs/final-whistle-writers-room-process.md](docs/final-whistle-writers-room-process.md) when the user asks to brainstorm show ideas, deepen story lines, define tone, create character arcs, or generate episode premises from live football data.
+5. Read [docs/hubs-board-blueprint.md](docs/hubs-board-blueprint.md) only when the user asks to plan or operate the Hubs board flow.
+6. Read [references/banny-cli.md](references/banny-cli.md) when the task involves Banny CLI setup, wardrobe/catalog choices, validation, preview frames, headless mp4 render, or `.bs` format details beyond this repo's pipeline.
 
 ## Setup
 
@@ -109,6 +110,7 @@ When `banny_enabled` is true in the pipeline config, the pipeline validates the 
 - Treat `runs/<episode_slug>/script.json` as the handoff file before voice generation. It contains the script, episode metadata, preroll/cold-open data, and outro effect instructions.
 - Treat `outputs/<episode_slug>.bs` and `outputs/<episode_slug>.bannyshow` as the Studio handoff after voice generation. Creator touch-ups in Studio should not require rerunning hosted TTS unless the spoken lines change.
 - Use `characters/default.json` unless the user provides another character file.
+- For brainstorming and premise generation, use `prompts/final-whistle-brainstorming.txt` alongside the season prompt so ideas preserve the show bible, character engines, guardrails, and memory workflow.
 - Use `--no-memory` for isolated tests or one-off builds where callbacks to prior episodes would be undesirable.
 - Use `examples/overlays.final-whistle-gantry.json` for the Final Whistle stadium background and title lockup defaults. Overlay entries can use `includeEpisodeTypes` or `excludeEpisodeTypes`; the title lockup is excluded for `outtake`.
 - Run `banny catalog --json` before choosing Banny wardrobe names or outfit slots. Never guess outfit names.

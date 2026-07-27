@@ -315,9 +315,13 @@ def _apply_script_to_package(
     performance_end = apply_performance_plan(stage, load_performance_plan(performance_plan_path), voice_manifest_path)
     if performance_end:
         duration = max(duration, performance_end + 1.0)
+    overlays = _resolve_overlay_anchors(load_overlay_manifest(overlays_path), clips)
+    overlay_end = _overlay_timeline_end(overlays)
+    if overlay_end:
+        duration = max(duration, overlay_end + 1.0)
     _extend_show_duration(show, duration)
     _trim_timeline_to_duration(stage, duration)
-    apply_overlays(package_dir, show, load_overlay_manifest(overlays_path), duration, episode_type=script.get("episodeType"))
+    apply_overlays(package_dir, show, overlays, duration, episode_type=script.get("episodeType"))
     _remove_unreferenced_audio(package_dir, stage)
 
     show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -338,6 +342,12 @@ def _copy_package_to_dir(source: Path, destination: Path) -> None:
 
 
 def _write_package_output(package_dir: Path, out: Path) -> None:
+    show_path = package_dir / "show.json"
+    if show_path.exists():
+        show = json.loads(show_path.read_text(encoding="utf-8"))
+        if show.get("version") != 4:
+            show["version"] = 4
+            show_path.write_text(json.dumps(show, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if out.exists():
         if out.is_dir():
             shutil.rmtree(out)
@@ -409,8 +419,10 @@ def _resolve_background_gain(background_gain: Optional[float]) -> float:
 
 def _replace_dialogue_track(stage: dict[str, Any], clips: list[VoiceClip]) -> None:
     audio_tracks = stage.get("audioTracks")
-    if not isinstance(audio_tracks, list) or not audio_tracks:
+    if not isinstance(audio_tracks, list):
         raise BannyPackageError("stage is missing audioTracks")
+    if not audio_tracks:
+        audio_tracks.append({"id": "dialogue", "name": "Dialogue", "fx": _default_track_fx(), "clips": [], "cues": [], "hidden": False, "presence": []})
 
     track = audio_tracks[0]
     track["name"] = "Dialogue"
@@ -433,6 +445,41 @@ def _replace_dialogue_track(stage: dict[str, Any], clips: list[VoiceClip]) -> No
         }
         for index, clip in enumerate(clips)
     ]
+
+
+def _resolve_overlay_anchors(overlays: list[dict[str, Any]], clips: list[VoiceClip]) -> list[dict[str, Any]]:
+    if not overlays:
+        return overlays
+
+    clips_by_line_id = {clip.line_id: clip for clip in clips if clip.line_id}
+    resolved = []
+    for overlay in overlays:
+        line_id = str(overlay.get("anchorLineId") or overlay.get("anchor_line_id") or "").strip()
+        if not line_id:
+            resolved.append(overlay)
+            continue
+        clip = clips_by_line_id.get(line_id)
+        if clip is None:
+            raise BannyPackageError(f"overlay references unknown anchorLineId: {line_id}")
+        anchored = dict(overlay)
+        offset = float(anchored.pop("anchorOffset", anchored.pop("anchor_offset", 0)) or 0)
+        anchored["start"] = round(max(0.0, clip.start + offset), 3)
+        resolved.append(anchored)
+    return resolved
+
+
+def _overlay_timeline_end(overlays: list[dict[str, Any]]) -> float:
+    end = 0.0
+    for overlay in overlays:
+        if overlay.get("dur") == "full":
+            continue
+        try:
+            start = float(overlay.get("start") or 0)
+            duration = float(overlay.get("dur") or 0)
+        except (TypeError, ValueError):
+            continue
+        end = max(end, start + duration)
+    return round(end, 3)
 
 
 def _append_outro_effect(stage: dict[str, Any], script: dict[str, Any], audio_dir: Path, dialogue_end: float) -> float:
@@ -619,6 +666,8 @@ def _extend_show_duration(show: dict[str, Any], duration: float) -> None:
     stage = show.get("stage") or {}
     for track_name in ("backgroundTracks", "lightTracks"):
         for track in stage.get(track_name) or []:
+            if track_name == "backgroundTracks" and track.get("id") == "camera-beats":
+                continue
             for cue in track.get("cues") or []:
                 cue["start"] = min(float(cue.get("start") or 0), round(duration, 3))
                 cue["dur"] = round(duration - float(cue.get("start") or 0), 3)

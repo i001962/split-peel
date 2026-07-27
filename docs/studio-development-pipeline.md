@@ -129,6 +129,8 @@ After audio is generated, prefer Banny Studio for visual touch-ups and `retime-m
 | Match normalization, full ESPN slate, and key moments | `src/split_peel/espn.py` | `runs/<episode_slug>/match_context.json` |
 | Show name, tagline, episode rules, preroll, outro effect | `src/split_peel/scriptwriter.py` | `runs/<episode_slug>/script.json` |
 | Season voice/style instructions | `prompts/final-whistle-season.txt` | `runs/<episode_slug>/script.json` |
+| Show bible and writers room process | `docs/final-whistle-show-bible.md`, `docs/final-whistle-writers-room-process.md` | brainstormed premise cards and story arcs |
+| Brainstorming prompt | `prompts/final-whistle-brainstorming.txt` | reusable idea-generation instructions |
 | Character voices and appearance | `characters/default.json` | `outputs/<episode_slug>.bs` |
 | Stadium/title/default overlay manifest | `examples/overlays.final-whistle-gantry.json` | `runs/<episode_slug>/espn-overlays.json` and `runs/<episode_slug>/pfp-overlays.json` |
 | Hosted voice provider | `src/split_peel/audio.py` plus `.env` | `audio/*.wav` inside the `.bs` package |

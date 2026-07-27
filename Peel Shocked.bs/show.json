@@ -1,0 +1,191 @@
+{
+  "assets" : [
+
+  ],
+  "settings" : {
+    "activeScene" : 0,
+    "frameH" : 9,
+    "frameW" : 16,
+    "lightSize" : 0
+  },
+  "show" : [
+
+  ],
+  "stage" : {
+    "audioTracks" : [
+
+    ],
+    "backgroundTracks" : [
+      {
+        "cues" : [
+
+        ],
+        "hidden" : false,
+        "id" : "ams2gsebl1n2s2cu",
+        "locked" : false,
+        "name" : "Scenes",
+        "presence" : [
+
+        ]
+      }
+    ],
+    "characters" : [
+      {
+        "armedGroups" : [
+          "move",
+          "depth",
+          "tilt",
+          "talk",
+          "blink",
+          "jump",
+          "spin",
+          "zoom"
+        ],
+        "baseOutfit" : {
+          "11" : "zucco-tshirt",
+          "5" : "surprised",
+          "6" : "proff-glasses",
+          "7" : "open"
+        },
+        "body" : "original",
+        "clips" : [
+
+        ],
+        "depth" : -4.805798437499942,
+        "events" : [
+          {
+            "code" : "KeyM",
+            "down" : true,
+            "t" : 0
+          },
+          {
+            "code" : "Comma",
+            "down" : true,
+            "t" : 0
+          },
+          {
+            "code" : "Comma",
+            "down" : false,
+            "t" : 0.625
+          },
+          {
+            "code" : "KeyM",
+            "down" : false,
+            "t" : 0.652
+          }
+        ],
+        "face" : 1,
+        "hidden" : false,
+        "locked" : false,
+        "name" : "Peel Shocked",
+        "presence" : [
+
+        ],
+        "reactions" : [
+
+        ],
+        "recStart" : {
+          "depth" : -4.805798437499942,
+          "face" : 1,
+          "spin" : 0,
+          "x" : 0.34987509713661,
+          "zoom" : 1.2065579711909655
+        },
+        "rotationPivot" : {
+          "x" : 0.5,
+          "y" : 0.1441501524390244
+        },
+        "rotationSpeed" : 90,
+        "size" : 1,
+        "solo" : false,
+        "speechVoice" : {
+          "automaticMouth" : true,
+          "recipe" : {
+            "compression" : 0,
+            "delayFeedback" : 0,
+            "delayMix" : 0,
+            "delayTime" : 0.12,
+            "distortion" : "none",
+            "distortionMix" : 0,
+            "doubling" : 0,
+            "flavor" : 1,
+            "high" : 0,
+            "low" : 0,
+            "mid" : 0,
+            "name" : "Natural",
+            "outputGainDB" : 0,
+            "pitchCents" : 0,
+            "preset" : "natural",
+            "reverbMix" : 0,
+            "reverbSpace" : "mediumRoom"
+          }
+        },
+        "speed" : 320,
+        "subs" : [
+
+        ],
+        "trackFx" : {
+          "gain" : 1,
+          "high" : 0,
+          "low" : 0,
+          "mid" : 0,
+          "pan" : "follow",
+          "reverb" : 0
+        },
+        "voicePitch" : 0,
+        "voiceSpeed" : 1,
+        "wobble" : 7,
+        "x" : 0.34987509713661
+      }
+    ],
+    "cropAnchors" : [
+
+    ],
+    "gScale" : 0.6,
+    "gSize" : 1.2,
+    "gravity" : 1,
+    "imageTracks" : [
+
+    ],
+    "lightTracks" : [
+      {
+        "cues" : [
+          {
+            "dur" : 0.7503906249999996,
+            "from" : {
+              "intensity" : 1,
+              "size" : 120,
+              "x" : 0.8,
+              "y" : 0.18
+            },
+            "id" : "ams2gsebbaz7uuc",
+            "start" : 0
+          }
+        ],
+        "hidden" : false,
+        "id" : "ams2gsebb78eeoo",
+        "locked" : true,
+        "name" : "Light 1",
+        "presence" : [
+
+        ]
+      }
+    ],
+    "lights" : [
+      {
+        "x" : 0.8,
+        "y" : 0.18
+      }
+    ],
+    "markers" : [
+
+    ],
+    "reactionLibrary" : [
+
+    ],
+    "rowOrder" : [
+
+    ]
+  },
+  "version" : 4
+}

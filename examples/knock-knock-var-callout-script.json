@@ -1,0 +1,77 @@
+{
+  "title": "Knock Knock: Rug Pull FC",
+  "episodeType": "outtake",
+  "showName": "Split & Peel",
+  "tagline": "The beautiful game, on-chain emotional damage.",
+  "dialogue": [
+    {
+      "id": "knock-knock",
+      "speaker": "split",
+      "line": "Knock knock.",
+      "tone": "dry setup, trying not to smile"
+    },
+    {
+      "id": "whos-there",
+      "speaker": "peel",
+      "line": "Who's there?",
+      "tone": "wary, already regretting participating"
+    },
+    {
+      "id": "var",
+      "speaker": "split",
+      "line": "Var.",
+      "tone": "too pleased with herself"
+    },
+    {
+      "id": "var-who",
+      "speaker": "peel",
+      "line": "VAR who?",
+      "tone": "flat, suspicious"
+    },
+    {
+      "id": "oracle-payoff",
+      "speaker": "split",
+      "line": "VAR waiting on the oracle, because the striker just got rug-pulled by his own first touch.",
+      "tone": "big reveal, football pundit rhythm"
+    },
+    {
+      "id": "liquidity-crisis",
+      "speaker": "peel",
+      "line": "That's not a knock-knock joke. That's a liquidity crisis in the box.",
+      "tone": "offended analyst"
+    },
+    {
+      "id": "method-actor",
+      "speaker": "split",
+      "line": "Exactly. Bad actor. Method actor. Trained at the academy of pretending there was contact.",
+      "tone": "confident, escalating"
+    },
+    {
+      "id": "ref-bought-it",
+      "speaker": "peel",
+      "line": "And the ref bought it?",
+      "tone": "disappointed but unsurprised"
+    },
+    {
+      "id": "soft-rug",
+      "speaker": "split",
+      "line": "Soft rug. Stonewall simulation.",
+      "tone": "official ruling"
+    },
+    {
+      "id": "football-eh",
+      "speaker": "peel",
+      "line": "Football, eh?",
+      "tone": "weary terrace wisdom"
+    },
+    {
+      "id": "on-chain-damage",
+      "speaker": "split",
+      "line": "On-chain emotional damage.",
+      "tone": "final button"
+    }
+  ],
+  "outroEffect": {
+    "enabled": false
+  }
+}

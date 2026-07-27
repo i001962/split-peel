@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from split_peel.ad_callouts import build_ad_callout_artifacts, insert_ad_callout, insert_ad_callout_overlays, load_ad_cast
 from split_peel.characters import DEFAULT_CHARACTERS_PATH, load_characters
 from split_peel.config import load_dotenv
 from split_peel.espn import (
@@ -136,6 +137,26 @@ def main(argv: Optional[list[str]] = None) -> int:
     build_parser.add_argument("--skip-voice", action="store_true")
     build_parser.add_argument("--voice-manifest", type=Path)
     build_parser.add_argument("--performance-plan", type=Path)
+
+    ad_parser = subparsers.add_parser("build-ad-callout", help="Build reusable ad-callout script and overlay artifacts from a cast-shaped ad JSON.")
+    ad_parser.add_argument("--ad", type=Path, required=True)
+    ad_parser.add_argument("--script-out", type=Path, required=True)
+    ad_parser.add_argument("--overlays-out", type=Path, required=True)
+    ad_parser.add_argument("--asset-dir", type=Path, required=True)
+    ad_parser.add_argument("--start", type=float, default=0.0)
+    ad_parser.add_argument("--duration", type=float, default=18.0)
+    ad_parser.add_argument("--variant", default="speech-bubble", choices=["speech-bubble", "dream"])
+
+    insert_ad_parser = subparsers.add_parser("insert-ad-callout", help="Insert an ad-callout script and anchored overlay manifest into an episode script.")
+    insert_ad_parser.add_argument("--script", type=Path, required=True)
+    insert_ad_parser.add_argument("--callout-script", type=Path, required=True)
+    insert_ad_parser.add_argument("--after-line-id", required=True)
+    insert_ad_parser.add_argument("--out-script", type=Path, required=True)
+    insert_ad_parser.add_argument("--overlays", type=Path)
+    insert_ad_parser.add_argument("--callout-overlays", type=Path, required=True)
+    insert_ad_parser.add_argument("--out-overlays", type=Path, required=True)
+    insert_ad_parser.add_argument("--callout-id", default="ad-callout")
+    insert_ad_parser.add_argument("--overlay-offset", type=float, default=0.0)
 
     voice_parser = subparsers.add_parser("build-voice", help="Build dialogue WAVs and a voice manifest from a script.")
     voice_parser.add_argument("--script", type=Path, required=True)
@@ -392,6 +413,46 @@ def main(argv: Optional[list[str]] = None) -> int:
             performance_plan=args.performance_plan,
         )
         print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "build-ad-callout":
+        artifacts = build_ad_callout_artifacts(
+            load_ad_cast(args.ad),
+            args.asset_dir,
+            start=args.start,
+            duration=args.duration,
+            variant=args.variant,
+        )
+        write_json(args.script_out, artifacts["script"])
+        write_json(args.overlays_out, artifacts["overlays"])
+        print(f"wrote {args.script_out}")
+        print(f"wrote {args.overlays_out}")
+        print(f"wrote {artifacts['assets']['calloutImage']}")
+        return 0
+
+    if args.command == "insert-ad-callout":
+        script = _read_json(args.script)
+        callout_script = _read_json(args.callout_script)
+        inserted = insert_ad_callout(
+            script,
+            callout_script,
+            after_line_id=args.after_line_id,
+            callout_id=args.callout_id,
+        )
+        first_line_id = inserted["adCallouts"][-1]["firstLineId"]
+        overlays = _read_json(args.overlays) if args.overlays else None
+        callout_overlays = _read_json(args.callout_overlays)
+        inserted_overlays = insert_ad_callout_overlays(
+            overlays,
+            callout_overlays,
+            anchor_line_id=first_line_id,
+            callout_id=args.callout_id,
+            offset=args.overlay_offset,
+        )
+        write_json(args.out_script, inserted)
+        write_json(args.out_overlays, inserted_overlays)
+        print(f"wrote {args.out_script}")
+        print(f"wrote {args.out_overlays}")
         return 0
 
     if args.command == "build-voice":

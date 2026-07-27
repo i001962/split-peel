@@ -7,6 +7,7 @@ from typing import List, Tuple
 
 from split_peel.package import (
     _apply_character_appearance,
+    _resolve_overlay_anchors,
     _set_background_audio_gain,
     _trim_timeline_to_duration,
     _replace_character_subtitles,
@@ -96,6 +97,17 @@ def test_set_background_audio_gain_updates_tracks_and_clips():
     assert stage["audioTracks"][0]["clips"][0]["fx"]["gain"] == 1
     assert stage["audioTracks"][1]["fx"]["gain"] == 0.18
     assert stage["audioTracks"][1]["clips"][0]["fx"]["gain"] == 0.18
+
+
+def test_resolve_overlay_anchors_uses_voice_clip_line_id():
+    overlays = [{"name": "ad bubble", "file": "ad.png", "anchorLineId": "ad-trigger", "anchorOffset": 0.2, "dur": 12}]
+    clips = [VoiceClip("clip-id", "split", "Before we continue.", 4.5, 1.2, [], line_id="ad-trigger")]
+
+    resolved = _resolve_overlay_anchors(overlays, clips)
+
+    assert resolved[0]["start"] == 4.7
+    assert resolved[0]["dur"] == 12
+    assert resolved[0]["anchorLineId"] == "ad-trigger"
 
 
 def test_trim_timeline_to_duration_cuts_non_dialogue_tracks():
@@ -433,6 +445,7 @@ def test_build_show_applies_script_anchored_reaction_and_camera_plan(tmp_path: P
     assert stage["characters"][1]["reactions"][0]["start"] == 3.25
     camera_track = stage["backgroundTracks"][-1]
     assert camera_track["id"] == "camera-beats"
+    assert camera_track["cues"][0]["dur"] == 1.2
     assert camera_track["cues"][0]["camFrom"] == {"x": 0.68, "y": 0.48, "zoom": 2.0}
     assert rendered["show"][0]["to"] == 5.45
 

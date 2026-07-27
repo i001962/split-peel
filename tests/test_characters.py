@@ -15,8 +15,12 @@ def test_load_characters_returns_defaults_for_missing_file(tmp_path):
     assert characters["characters"][1]["appearance"]["baseOutfit"]["6"] == "proff-glasses"
     assert characters["characters"][1]["appearance"]["baseOutfit"]["11"] == "zucco-tshirt"
     instructions = instructions_for_speaker(characters, "split", "fallback")
-    assert "female cartoon banana sports-announcer voice" in instructions
-    assert "cartoon banana football commentator" in instructions
+    assert "female cartoon banana lead-host voice" in instructions
+    assert "whip-smart younger female lead host" in instructions
+    assert "keeps Peel" in instructions
+    peel_instructions = instructions_for_speaker(characters, "peel", "fallback")
+    assert "old-school cartoon banana co-host" in peel_instructions
+    assert "walks into double entendres" in peel_instructions
 
 
 def test_voice_speed_for_speaker_reads_and_clamps_provider_speed():

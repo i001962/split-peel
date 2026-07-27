@@ -1,0 +1,55 @@
+{
+  "cast": {
+    "hash": "0xpoidh-politics-1190",
+    "text": "POIDH.xyz has a bounty to interview an active US federal or state politician about crypto, decentralization, internet governance, and open networks. Ask all 10 required questions on video, post it on Farcaster /politics, and the first legit claim wins.",
+    "timestamp": "2026-07-25T12:00:00.000Z",
+    "author": {
+      "fid": 1190,
+      "username": "poidhpolitics",
+      "displayName": "POIDH Politics Bounty",
+      "pfpUrl": ""
+    }
+  },
+  "sponsor": {
+    "name": "POIDH Politics Bounty",
+    "offer": "Bounty: 0.0817 ETH, about $152.49 in the provided source.",
+    "cta": "Interview a politician. Post to /politics. Claim.",
+    "talkingPoints": [
+      "POIDH funds bounties; claimants submit proof; winners get paid.",
+      "Record a real politician answering the required crypto questions, then submit the video claim."
+    ]
+  },
+  "callout": {
+    "start": 12,
+    "duration": 10,
+    "variant": "speech-bubble"
+  },
+  "extra": {
+    "sourceBounty": {
+      "id": 1190,
+      "onChainId": 204,
+      "chainId": 8453,
+      "title": "Interview a Politician About Crypto for The /politics Network",
+      "description": "We want direct, on-camera conversations with real US politicians about crypto, decentralization, internet governance, and the future of our open networks.\n\nYour mission is simple: interview a federal or state-level politician and ask them the 10 required questions below on video. First legit claim wins.\n\nYour interview subject MUST be a currently active US politician at either the:\n\nFederal level\n- Congressperson\n- Senator\nState level\n- Governor\n- State congressperson / assembly member\n- State senator\n\nLocal officials (mayors, city council, etc.) are not eligible for this bounty.\n\nYou must ask all 10 questions in the interview.\n\n1. Do you see crypto as speech, property, or financial plumbing — and how does that shape your regulation stance?\n2. How would the CLARITY Act protect small builders versus entrench large incumbents?\n3. Should self-custody be an explicit right under US law?\n4. Where's the line between consumer protection and killing permissionless innovation?\n5. Do decentralized social protocols like Farcaster reduce platform monopoly risk — or just reshape it?\n6. Should protocol-layer speech be regulated differently than corporate platforms?\n7. How would you prevent regulatory capture by large crypto firms?\n8. Do you support prediction markets (like Policast) as legitimate civic tools or view them as gambling?\n9. Can the government censor at the app layer if the protocol itself is neutral?\n10. What would make you publicly post from a decentralized social network yourself?\n\nRules\n- Video format required\n- Original interviews only\n- Audio must be understandable\n- Minor editing is allowed\n- Short-form clips and full interviews are both acceptable\n- AI-generated interviews or voice cloning are prohibited\n- You may ask follow-up questions in addition to the required list\n\nFirst legit video, posted on the Farcaster /politics channel, wins.",
+      "amount": "81700000000000000",
+      "issuer": "0xe2350a05267a1164cdbfdc2e48f4a1ba6486532d",
+      "createdAt": "1780355155",
+      "inProgress": true,
+      "isJoinedBounty": true,
+      "isCanceled": false,
+      "isMultiplayer": true,
+      "isVoting": false,
+      "deadline": null,
+      "ban": [],
+      "extra": {
+        "bountyId": 1190,
+        "chainId": 8453,
+        "album": "politics"
+      },
+      "hasClaims": false,
+      "hasParticipants": true,
+      "amountSort": 152.48978,
+      "currency": "eth"
+    }
+  }
+}
