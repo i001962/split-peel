@@ -21,7 +21,7 @@
   "skip_voice": false,
   "banny_enabled": true,
   "banny_bin": null,
-  "banny_checkout_path": null,
+  "banny_checkout_path": ".cache/banny-studio",
   "banny_render_size": "720",
   "banny_preview_times": [
     2,

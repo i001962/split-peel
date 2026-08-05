@@ -73,16 +73,16 @@ def resolve_banny_cli(banny_bin: Optional[Path] = None, checkout_path: Optional[
             raise BannyCliError(f"Banny CLI not found at {explicit_bin}")
         return BannyCli([str(explicit_bin)])
 
-    path_bin = shutil.which("banny")
-    if path_bin:
-        return BannyCli([path_bin])
-
     checkout = checkout_path or _env_path("BANNY_STUDIO_CHECKOUT")
     if checkout:
         package_file = checkout / "Package.swift"
         if not package_file.exists():
             raise BannyCliError(f"Banny Studio checkout missing Package.swift: {checkout}")
         return BannyCli(["swift", "run", "banny"], cwd=checkout)
+
+    path_bin = shutil.which("banny")
+    if path_bin:
+        return BannyCli([path_bin])
 
     raise BannyCliError(
         "Banny CLI is enabled but unavailable. Install `banny`, set BANNY_BIN, "

@@ -27,6 +27,23 @@ def test_resolve_banny_cli_supports_local_checkout(tmp_path: Path, monkeypatch):
     assert cli.cwd == checkout
 
 
+def test_resolve_banny_cli_prefers_checkout_over_path_binary(tmp_path: Path, monkeypatch):
+    path_dir = tmp_path / "bin"
+    path_dir.mkdir()
+    fake_path_bin = path_dir / "banny"
+    fake_path_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_path_bin.chmod(0o755)
+    checkout = tmp_path / "banny-studio"
+    checkout.mkdir()
+    (checkout / "Package.swift").write_text("// package", encoding="utf-8")
+    monkeypatch.setenv("PATH", str(path_dir))
+
+    cli = resolve_banny_cli(checkout_path=checkout)
+
+    assert cli.command_prefix == ["swift", "run", "banny"]
+    assert cli.cwd == checkout
+
+
 def test_banny_cli_raises_on_failed_command(tmp_path: Path):
     fake = tmp_path / "banny"
     fake.write_text("#!/bin/sh\necho bad >&2\nexit 2\n", encoding="utf-8")
