@@ -21,6 +21,13 @@ from split_peel.memory import DEFAULT_MEMORY_DIR, load_episode_memory, save_epis
 from split_peel.overlays import build_key_moment_takeover_overlays, build_pfp_overlays, load_overlay_manifest
 from split_peel.package import build_show, inspect_package, repair_banny_wardrobe, unpack_package
 from split_peel.scriptwriter import draft_script
+from split_peel.social_clips import (
+    SocialClipError,
+    build_social_clip_specs,
+    export_social_clips_from_movie,
+    export_social_clips_with_banny,
+    write_social_clip_artifacts,
+)
 from split_peel.voice_manifest import build_voice_manifest
 from split_peel.youtube import (
     DEFAULT_YOUTUBE_CATEGORY_ID,
@@ -93,6 +100,13 @@ class PipelineConfig:
     youtube_generate_thumbnail: bool = False
     youtube_thumbnail_background: Optional[Path] = None
     youtube_brand_lockup: Path = DEFAULT_BRAND_LOCKUP
+    social_clips_enabled: bool = False
+    social_clips_count: int = 2
+    social_clips_min_duration: float = 6.0
+    social_clips_max_duration: float = 22.0
+    social_clips_padding: float = 0.35
+    social_clips_output_dir: Optional[Path] = None
+    social_clips_source: str = "banny-range"
 
 
 def load_pipeline_config(path: Path) -> PipelineConfig:
@@ -160,13 +174,20 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         youtube_generate_thumbnail=bool(payload.get("youtube_generate_thumbnail", False)),
         youtube_thumbnail_background=_optional_path(payload.get("youtube_thumbnail_background"), base_dir),
         youtube_brand_lockup=_path(payload.get("youtube_brand_lockup") or DEFAULT_BRAND_LOCKUP, base_dir),
+        social_clips_enabled=bool(payload.get("social_clips_enabled", False)),
+        social_clips_count=int(payload.get("social_clips_count") or 2),
+        social_clips_min_duration=float(payload.get("social_clips_min_duration") or 6.0),
+        social_clips_max_duration=float(payload.get("social_clips_max_duration") or 22.0),
+        social_clips_padding=float(payload.get("social_clips_padding") or 0.35),
+        social_clips_output_dir=_optional_path(payload.get("social_clips_output_dir"), base_dir),
+        social_clips_source=_social_clips_source(payload.get("social_clips_source") or "banny-range"),
     )
 
 
 def write_pipeline_config_template(path: Path) -> None:
     payload = {
         "episode_slug": "pipeline-smoke",
-        "template_path": "outputs/openai-voiced.bs",
+        "template_path": "templates/final-whistle-desk.bannyshow",
         "run_dir": "runs/pipeline-smoke",
         "output_bs": "outputs/pipeline-smoke.bs",
         "output_bannyshow": "outputs/pipeline-smoke.bannyshow",
@@ -218,6 +239,13 @@ def write_pipeline_config_template(path: Path) -> None:
         "youtube_generate_thumbnail": False,
         "youtube_thumbnail_background": None,
         "youtube_brand_lockup": str(DEFAULT_BRAND_LOCKUP),
+        "social_clips_enabled": False,
+        "social_clips_count": 2,
+        "social_clips_min_duration": 6,
+        "social_clips_max_duration": 22,
+        "social_clips_padding": 0.35,
+        "social_clips_output_dir": None,
+        "social_clips_source": "banny-range",
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -263,6 +291,9 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
         artifacts["youtube_upload"] = str(config.run_dir / "youtube-upload.json")
     if _should_generate_youtube_thumbnail(config):
         artifacts["youtube_thumbnail"] = str(config.run_dir / "youtube-thumbnail.png")
+    if config.social_clips_enabled and not config.draft_only:
+        artifacts["social_clips"] = str(_social_clips_output_dir(config) / "social-clips.json")
+        artifacts["social_posts"] = str(_social_clips_output_dir(config) / "social-posts.md")
 
     return {
         "episode_slug": config.episode_slug,
@@ -290,6 +321,7 @@ def build_pipeline_plan(config: PipelineConfig) -> dict[str, Any]:
             *([] if config.draft_only else ["build-voice", "build-show", "unpack", *_banny_stages(config)]),
             *([] if config.draft_only else ["write-movie-export-handoff", "write-studio-qa-checklist"]),
             *([] if not _should_generate_youtube_thumbnail(config) else ["generate-youtube-thumbnail"]),
+            *([] if config.draft_only or not config.social_clips_enabled else ["social-clips"]),
             *([] if config.draft_only or not config.youtube_upload_enabled else ["youtube-upload"]),
             "write-pipeline-manifest",
         ],
@@ -419,6 +451,7 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
     write_studio_qa_checklist(config, qa_path, banny_result=banny_result)
     write_movie_export_handoff(config, handoff_path, banny_result=banny_result)
     thumbnail_result = run_youtube_thumbnail(config, script, match_context) if _should_generate_youtube_thumbnail(config) else None
+    social_clips_result = run_social_clip_export(config, script_path, voice_manifest_path) if config.social_clips_enabled else None
     upload_thumbnail = Path(thumbnail_result["path"]) if thumbnail_result else config.youtube_thumbnail
     youtube_result = run_youtube_upload(config, script, thumbnail_path=upload_thumbnail) if config.youtube_upload_enabled else None
 
@@ -431,12 +464,41 @@ def run_studio_pipeline(config: PipelineConfig, dry_run: bool = False) -> dict[s
         "movie_export_path": str(config.output_movie),
         "banny": banny_result,
         "youtube_thumbnail": thumbnail_result,
+        "social_clips": social_clips_result,
         "youtube": youtube_result,
         "delivery_status": _delivery_status(banny_result, youtube_result),
         "status": "ready-for-studio-qa",
     }
     write_json(config.run_dir / "pipeline-manifest.json", manifest)
     return manifest
+
+
+def run_social_clip_export(config: PipelineConfig, script_path: Path, voice_manifest_path: Path) -> dict[str, Any]:
+    specs = build_social_clip_specs(
+        script_path,
+        voice_manifest_path,
+        count=config.social_clips_count,
+        min_duration=config.social_clips_min_duration,
+        max_duration=config.social_clips_max_duration,
+        padding=config.social_clips_padding,
+    )
+    out_dir = _social_clips_output_dir(config)
+    try:
+        if config.social_clips_source == "final-movie":
+            result = export_social_clips_from_movie(config.output_movie, specs, out_dir)
+        else:
+            result = export_social_clips_with_banny(
+                config.output_bs,
+                specs,
+                out_dir,
+                render_size=config.banny_render_size,
+                banny_bin=config.banny_bin,
+                banny_checkout_path=config.banny_checkout_path,
+            )
+    except SocialClipError as error:
+        raise PipelineError(str(error)) from error
+    artifact_paths = write_social_clip_artifacts(result, out_dir)
+    return {**result, "manifest": artifact_paths["manifest"], "handoff": artifact_paths["handoff"]}
 
 
 def run_youtube_thumbnail(
@@ -567,6 +629,7 @@ def write_studio_qa_checklist(config: PipelineConfig, path: Path, banny_result: 
         "- [ ] Export range covers the full episode.",
         f"- [ ] Export movie to `{config.output_movie}`.",
         "- [ ] Final video plays without missing media.",
+        *(_social_clip_checklist_lines(config)),
         "- [ ] Re-opened `.bannyshow` still works.",
         "",
         "## Notes",
@@ -597,6 +660,7 @@ def write_movie_export_handoff(config: PipelineConfig, path: Path, banny_result:
         "## Target Output",
         "",
         f"- Final movie: `{config.output_movie}`",
+        *(_social_clip_handoff_lines(config)),
         "",
         "## Export Steps",
         "",
@@ -682,6 +746,17 @@ def _youtube_privacy_status(value: Any) -> str:
     if status not in {"private", "public", "unlisted"}:
         raise PipelineError("youtube_privacy_status must be one of: private, public, unlisted")
     return status
+
+
+def _social_clips_source(value: Any) -> str:
+    source = str(value)
+    if source not in {"banny-range", "final-movie"}:
+        raise PipelineError("social_clips_source must be one of: banny-range, final-movie")
+    return source
+
+
+def _social_clips_output_dir(config: PipelineConfig) -> Path:
+    return config.social_clips_output_dir or (Path.cwd() / "outputs" / "social" / config.episode_slug)
 
 
 def _instructions(inline: Optional[str], path: Optional[Path]) -> Optional[str]:
@@ -791,6 +866,26 @@ def _banny_checklist_lines(config: PipelineConfig, banny_result: Optional[dict[s
     else:
         lines.append(f"- [ ] Export movie manually to `{config.output_movie}`.")
     return lines
+
+
+def _social_clip_checklist_lines(config: PipelineConfig) -> list[str]:
+    if not config.social_clips_enabled:
+        return []
+    out_dir = _social_clips_output_dir(config)
+    return [
+        f"- [ ] Review social MP4 sound bites in `{out_dir}`.",
+        f"- [ ] Review X and Farcaster copy in `{out_dir / 'social-posts.md'}`.",
+    ]
+
+
+def _social_clip_handoff_lines(config: PipelineConfig) -> list[str]:
+    if not config.social_clips_enabled:
+        return []
+    out_dir = _social_clips_output_dir(config)
+    return [
+        f"- Social clip MP4s: `{out_dir}`",
+        f"- Social post handoff: `{out_dir / 'social-posts.md'}`",
+    ]
 
 
 def _handoff_summary(config: PipelineConfig, banny_result: Optional[dict[str, Any]]) -> str:

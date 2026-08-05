@@ -37,6 +37,12 @@ from split_peel.pipeline import (
     write_pipeline_config_template,
 )
 from split_peel.scriptwriter import EPISODE_TYPE_CHOICES, draft_script
+from split_peel.social_clips import (
+    build_social_clip_specs,
+    export_social_clips_from_movie,
+    export_social_clips_with_banny,
+    write_social_clip_artifacts,
+)
 from split_peel.topic_ideas import generate_topic_ideas
 from split_peel.voice_manifest import build_voice_manifest
 from split_peel.x_trends import DEFAULT_X_WOEID, fetch_x_trends
@@ -260,6 +266,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     youtube_update_parser.add_argument("--thumbnail", type=Path)
     youtube_update_parser.add_argument("--out", type=Path)
     youtube_update_parser.add_argument("--dry-run", action="store_true")
+
+    social_clips_parser = subparsers.add_parser("social-clips", help="Export short MP4 sound bites for X and Farcaster.")
+    social_clips_parser.add_argument("--script", type=Path, required=True)
+    social_clips_parser.add_argument("--voice-manifest", type=Path, required=True)
+    social_clips_parser.add_argument("--show", type=Path, help="Banny .bs or .bannyshow source for range export.")
+    social_clips_parser.add_argument("--movie", type=Path, help="Existing final MP4 source for ffmpeg trim fallback.")
+    social_clips_parser.add_argument("--out-dir", type=Path, required=True)
+    social_clips_parser.add_argument("--count", type=int, default=2)
+    social_clips_parser.add_argument("--min-duration", type=float, default=6.0)
+    social_clips_parser.add_argument("--max-duration", type=float, default=22.0)
+    social_clips_parser.add_argument("--padding", type=float, default=0.35)
+    social_clips_parser.add_argument("--source", choices=["banny-range", "final-movie"], default="banny-range")
+    social_clips_parser.add_argument("--render-size", default="720", choices=["480", "720", "1080", "4k"])
+    social_clips_parser.add_argument("--banny-bin", type=Path)
+    social_clips_parser.add_argument("--banny-checkout-path", type=Path)
 
     thumbnail_parser = subparsers.add_parser("generate-youtube-thumbnail", help="Generate a YouTube-ready episode thumbnail.")
     thumbnail_parser.add_argument("--out", type=Path, required=True)
@@ -598,6 +619,37 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         manifest = run_studio_pipeline(load_pipeline_config(args.config), dry_run=args.dry_run)
         print(json.dumps(manifest, indent=2))
+        return 0
+
+    if args.command == "social-clips":
+        specs = build_social_clip_specs(
+            args.script,
+            args.voice_manifest,
+            count=args.count,
+            min_duration=args.min_duration,
+            max_duration=args.max_duration,
+            padding=args.padding,
+        )
+        if args.source == "final-movie":
+            if not args.movie:
+                raise SystemExit("--movie is required when --source final-movie")
+            result = export_social_clips_from_movie(args.movie, specs, args.out_dir)
+        else:
+            if not args.show:
+                raise SystemExit("--show is required when --source banny-range")
+            result = export_social_clips_with_banny(
+                args.show,
+                specs,
+                args.out_dir,
+                render_size=args.render_size,
+                banny_bin=args.banny_bin,
+                banny_checkout_path=args.banny_checkout_path,
+            )
+        artifacts = write_social_clip_artifacts(result, args.out_dir)
+        print(f"wrote {artifacts['manifest']}")
+        print(f"wrote {artifacts['handoff']}")
+        for clip in result["clips"]:
+            print(f"wrote {clip['path']}")
         return 0
 
     if args.command == "upload-youtube":

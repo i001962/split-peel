@@ -113,12 +113,19 @@ With the default ElevenLabs provider, each uncached dialogue line becomes a host
 - `runs/<episode_slug>/script.json` has the final spoken lines.
 - Team names and weekdays are spoken in full.
 - Episode type is correct: `game-week-preview`, `match-event`, `recap`, `general`, or `outtake`.
-- Overlay manifests point at the intended background, title card, logos, and generated panels.
+- Overlay manifests point at the intended background, title card, logos, and generated panels. Use `layer: "behind-cast"` for context screens and `layer: "front-of-cast"` for desks, lower thirds, proof seals, feed cards, or other interruptions that should sit over the characters in the current Banny Studio feature set.
 - Outtake builds should not include the normal title lockup or polished welcome/signoff.
 
 After audio is generated, prefer Banny Studio for visual touch-ups and `retime-mouth` for timing repairs. Only rebuild with hosted TTS when spoken dialogue, tone direction, speaker assignment, or character voice settings change.
 
 `skip_voice` is intentionally strict: if a line cannot be found in the cache or reuse package, the build fails rather than calling the provider.
+
+For longer episodes, split the script into reviewed scenes before hosted voice
+generation. Build or review scene-level units first, then assemble the final
+episode in post-production when practical. Treat the reviewed scene scripts as
+locked: production/package generation must not add spoken content after script
+approval unless that new material goes back through review. As part of the lock
+check, verify character pronouns: Split is she/her, Peel is he/him.
 
 ## Default Sources
 

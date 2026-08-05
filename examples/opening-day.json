@@ -1,6 +1,6 @@
 {
   "episode_slug": "opening-day",
-  "template_path": "outputs/openai-voiced.bs",
+  "template_path": "templates/final-whistle-desk.bannyshow",
   "run_dir": "runs/opening-day",
   "output_bs": "outputs/opening-day.bs",
   "output_bannyshow": "outputs/opening-day.bannyshow",

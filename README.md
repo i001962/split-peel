@@ -128,7 +128,7 @@ Expensive build pass, only after the script is reviewed:
 
 ```bash
 split-peel build-show \
-  --template outputs/openai-voiced.bs \
+  --template templates/final-whistle-desk.bannyshow \
   --script runs/<episode>/script.json \
   --out outputs/<episode>.bs \
   --overlays runs/<episode>/pfp-overlays.json \
@@ -139,7 +139,7 @@ Draft-only end-to-end pass, without package build or voice generation:
 
 ```bash
 split-peel make \
-  --template outputs/openai-voiced.bs \
+  --template templates/final-whistle-desk.bannyshow \
   --run-dir runs/<episode> \
   --out outputs/<episode>.bs \
   --espn-league eng.1 \
@@ -200,6 +200,29 @@ split-peel generate-youtube-thumbnail \
 ```
 
 The thumbnail renderer outputs 1280x720 art from the episode title, show lockup, optional match/team context, and optional background or preview frame. When `youtube_upload_enabled` is true and no `youtube_thumbnail` is configured, `studio-pipeline` generates `runs/<episode>/youtube-thumbnail.png` automatically and passes it to upload.
+
+Create two short MP4 sound bites for X and Farcaster from the reviewed Banny package:
+
+```bash
+split-peel social-clips \
+  --script runs/<episode>/script.json \
+  --voice-manifest runs/<episode>/voice-manifest.json \
+  --show outputs/<episode>.bs \
+  --out-dir outputs/social/<episode> \
+  --source banny-range
+```
+
+The command uses the voice manifest's final line timings, chooses two likely funny non-overlapping bites, and exports `sound-bite-01.mp4` and `sound-bite-02.mp4` with `banny ship --range`. It also writes `social-clips.json` plus `social-posts.md` with draft copy for X and Farcaster. Use `--source final-movie --movie outputs/<episode>.mp4` only when you need to trim an already-rendered final MP4 with ffmpeg.
+
+Enable the same process inside `studio-pipeline`:
+
+```json
+{
+  "social_clips_enabled": true,
+  "social_clips_count": 2,
+  "social_clips_source": "banny-range"
+}
+```
 
 ```bash
 split-peel upload-youtube \
@@ -396,7 +419,7 @@ Script drafting wraps the generated commentary with a house-format intro and sig
 
 ## Overlay Assets
 
-Foreground media uses Banny's media cue shape. The generator copies image files into `assets/`, registers them in `assets[]`, then appends a media track under `stage.audioTracks[]` with `cues[]`.
+Visual overlays use Banny's image cue shape. The generator copies image or video files into `assets/`, registers them in `assets[]`, then appends an image track under `stage.imageTracks[]` with `cues[]`. Background replacements use the single `stage.backgroundTracks[]` Scenes track.
 
 Manifest format:
 
@@ -406,6 +429,7 @@ Manifest format:
     {
       "name": "commentary-desk",
       "file": "assets/desk.png",
+      "layer": "front-of-cast",
       "start": 0,
       "dur": "full",
       "x": 0.5,
@@ -417,6 +441,32 @@ Manifest format:
 ```
 
 Use transparent PNGs for desks and logos. Coordinates are normalized Banny stage positions; `x: 0.5`, `y: 0.5` is centered.
+
+For the current Banny Studio feature set, set `layer` or `visualLayer` to control whether a visual sits behind or in front of the cast:
+
+- `behind-cast`: tactics boards, ghosted xG maps, stadium screens, proof-lab monitors.
+- `front-of-cast`: desks, lower thirds, live-feed cards, referee cards, proof seals, tamper alerts.
+
+If no layer is set, the generator leaves `stage.rowOrder` alone. Backgrounds should still use `target: "background"` rather than `layer`.
+
+Image cues may also pass through Banny media fields when the current schema supports them: `rotation`, `to`, `pivot`, `mask`, `maskRadius`, `appearance`, `playback`, `speed`, and `rotationSpeed`. This allows simple motion and pivoted props without hand-editing `show.json`:
+
+```json
+{
+  "name": "haunted xg chart",
+  "file": "runs/latest/key-moment-assets/xg-chart.png",
+  "layer": "behind-cast",
+  "start": 12,
+  "dur": 5,
+  "x": 0.5,
+  "y": 0.42,
+  "scale": 0.46,
+  "rotation": -3,
+  "to": {"x": 0.52, "y": 0.4, "scale": 0.5, "rotation": 2},
+  "pivot": {"x": 0.5, "y": 0.9},
+  "appearance": {"shadow": 0.3}
+}
+```
 
 Overlay manifests can be made episode-type aware:
 
@@ -588,6 +638,8 @@ For repeatable Studio builds, `split-peel studio-pipeline` can call the Banny CL
 The pipeline resolves Banny from `banny_bin`, `BANNY_BIN`, `banny` on `PATH`, `banny_checkout_path`, or `BANNY_STUDIO_CHECKOUT`. Use a stable installed binary or local checkout; do not clone or pull Banny Studio on every episode run.
 
 When enabled, the pipeline runs `banny validate`, `banny info --json`, configured `banny preview` frames, and optionally `banny ship` for the final mp4.
+
+For the latest Banny Studio feature review and show-specific adoption plan, see `docs/banny-1.7-engagement-plan.md`. App Store release-note numbers may be unreliable, so use the installed app and current GitHub `main` checkout as the practical source of truth; the pipeline should validate and export with the same Banny generation used for final Studio polish.
 
 For OpenAI voice generation, use:
 

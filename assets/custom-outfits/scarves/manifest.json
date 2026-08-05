@@ -1,0 +1,50 @@
+[
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/fc94426e-c4ad-5662-b115-8d3ba72d4f0c.bannyoutfit",
+    "id": "fc94426e-c4ad-5662-b115-8d3ba72d4f0c",
+    "name": "Hand Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/3f206825-0af9-5cf8-84ef-62dfeeafa662.bannyoutfit",
+    "id": "3f206825-0af9-5cf8-84ef-62dfeeafa662",
+    "name": "LFC Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-lfc-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/833dd9a0-712c-5f7c-bbbf-37e38b5931a9.bannyoutfit",
+    "id": "833dd9a0-712c-5f7c-bbbf-37e38b5931a9",
+    "name": "ARS Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-ars-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/76a76220-d2c1-5d7c-aeec-6e1edf85e8b1.bannyoutfit",
+    "id": "76a76220-d2c1-5d7c-aeec-6e1edf85e8b1",
+    "name": "AVL Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-avl-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/38ca1569-c9f5-53eb-83dc-cbf9f181f987.bannyoutfit",
+    "id": "38ca1569-c9f5-53eb-83dc-cbf9f181f987",
+    "name": "BAR Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-bar-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/92e346fd-0394-5d40-b4ad-b745fda99795.bannyoutfit",
+    "id": "92e346fd-0394-5d40-b4ad-b745fda99795",
+    "name": "MCI Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-mci-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/927f1aec-2879-5c35-a1d0-68142f0f8981.bannyoutfit",
+    "id": "927f1aec-2879-5c35-a1d0-68142f0f8981",
+    "name": "MUN Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-mun-hand-scarf.png"
+  },
+  {
+    "file": "/Users/kmm/Documents/Banny Studio/assets/custom-outfits/scarves/d65c6823-a2d3-52b9-8fc2-98d6893e0c7f.bannyoutfit",
+    "id": "d65c6823-a2d3-52b9-8fc2-98d6893e0c7f",
+    "name": "NEW Scarf",
+    "source": "/Users/kmm/Documents/Banny Studio/.cache/banny-studio/App/Resources/BannyAssets/png/outfit-nufc-hand-scarf.png"
+  }
+]

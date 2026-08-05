@@ -9,6 +9,7 @@ from split_peel.pipeline import (
     build_pipeline_plan,
     load_pipeline_config,
     run_banny_post_build,
+    run_social_clip_export,
     run_youtube_thumbnail,
     run_youtube_upload,
     run_studio_pipeline,
@@ -173,6 +174,29 @@ def test_build_pipeline_plan_can_generate_thumbnail_without_upload(tmp_path: Pat
     assert plan["artifacts"]["youtube_thumbnail"] == str(tmp_path / "runs/demo/youtube-thumbnail.png")
 
 
+def test_build_pipeline_plan_includes_social_clip_stage_when_enabled(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "pipeline.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "episode_slug": "demo",
+                "template_path": "templates/base.bs",
+                "social_clips_enabled": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = load_pipeline_config(config_path)
+
+    plan = build_pipeline_plan(config)
+
+    assert "social-clips" in plan["stages"]
+    assert plan["artifacts"]["social_clips"] == str(tmp_path / "outputs/social/demo/social-clips.json")
+    assert config.social_clips_count == 2
+    assert config.social_clips_source == "banny-range"
+
+
 def test_build_pipeline_plan_uses_empty_feed_stage_when_no_feed(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "pipeline.json"
@@ -303,6 +327,87 @@ def test_run_youtube_upload_requires_existing_movie(tmp_path: Path, monkeypatch)
 
     with pytest.raises(PipelineError, match="movie file does not exist"):
         run_youtube_upload(config, {"title": "Demo"})
+
+
+def test_run_social_clip_export_uses_banny_range_and_writes_handoff(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    fake = tmp_path / "banny"
+    fake.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                "case \"$1\" in",
+                "  ship) mkdir -p \"$(dirname \"$3\")\"; printf '%s' \"$*\" > \"$3\" ;;",
+                "  *) exit 9 ;;",
+                "esac",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    (tmp_path / "outputs").mkdir()
+    show_path = tmp_path / "outputs/demo.bs"
+    show_path.write_text("show", encoding="utf-8")
+    config_path = tmp_path / "pipeline.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "episode_slug": "demo",
+                "template_path": "templates/base.bs",
+                "output_bs": "outputs/demo.bs",
+                "banny_bin": str(fake),
+                "social_clips_enabled": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    script_path = tmp_path / "runs/demo/script.json"
+    manifest_path = tmp_path / "runs/demo/voice-manifest.json"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text(json.dumps({"title": "Derby Day"}), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "script_path": "script.json",
+                "audio_dir": "voice/audio",
+                "clips": [
+                    {
+                        "line_id": "split-001",
+                        "line_index": 0,
+                        "speaker": "split",
+                        "text": "Wait, that tackle had a boarding pass?",
+                        "tone": "shocked",
+                        "audio_id": "split-001",
+                        "start": 1.0,
+                        "duration": 2.0,
+                        "path": "voice/audio/split-001.wav",
+                    },
+                    {
+                        "line_id": "peel-002",
+                        "line_index": 1,
+                        "speaker": "peel",
+                        "text": "Please check the VAR for emotional damages.",
+                        "tone": "mock-serious",
+                        "audio_id": "peel-002",
+                        "start": 5.0,
+                        "duration": 2.0,
+                        "path": "voice/audio/peel-002.wav",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = load_pipeline_config(config_path)
+
+    result = run_social_clip_export(config, script_path, manifest_path)
+
+    assert result["clip_count"] == 2
+    assert (tmp_path / "outputs/social/demo/sound-bite-01.mp4").exists()
+    assert "--range" in (tmp_path / "outputs/social/demo/sound-bite-01.mp4").read_text(encoding="utf-8")
+    assert (tmp_path / "outputs/social/demo/social-posts.md").exists()
 
 
 def test_run_youtube_thumbnail_writes_run_artifact(tmp_path: Path, monkeypatch):
@@ -477,3 +582,6 @@ def test_write_pipeline_config_template_roundtrips(tmp_path: Path, monkeypatch):
     assert config.youtube_token == tmp_path / ".secrets/youtube-token.json"
     assert config.youtube_generate_thumbnail is False
     assert config.youtube_brand_lockup == tmp_path / "examples/assets/final-whistle-title.png"
+    assert config.social_clips_enabled is False
+    assert config.social_clips_count == 2
+    assert config.social_clips_source == "banny-range"

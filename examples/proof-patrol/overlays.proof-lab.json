@@ -5,6 +5,7 @@
     {
       "name": "proof patrol title",
       "file": "examples/proof-patrol/assets/proof-patrol-title.png",
+      "layer": "front-of-cast",
       "start": 0,
       "dur": 3.5,
       "x": 0.5,
@@ -14,6 +15,7 @@
     {
       "name": "tamper alert",
       "file": "examples/proof-patrol/assets/tamper-alert.png",
+      "layer": "front-of-cast",
       "start": 14,
       "dur": 4,
       "x": 0.5,
@@ -23,6 +25,7 @@
     {
       "name": "version trace",
       "file": "examples/proof-patrol/assets/version-trace.png",
+      "layer": "behind-cast",
       "start": 22,
       "dur": 5,
       "x": 0.5,

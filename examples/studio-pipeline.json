@@ -1,6 +1,6 @@
 {
   "episode_slug": "pipeline-smoke",
-  "template_path": "outputs/openai-voiced.bs",
+  "template_path": "templates/final-whistle-desk.bannyshow",
   "run_dir": "runs/pipeline-smoke",
   "output_bs": "outputs/pipeline-smoke.bs",
   "output_bannyshow": "outputs/pipeline-smoke.bannyshow",
@@ -47,5 +47,12 @@
   "youtube_thumbnail": null,
   "youtube_generate_thumbnail": false,
   "youtube_thumbnail_background": null,
-  "youtube_brand_lockup": "examples/assets/final-whistle-title.png"
+  "youtube_brand_lockup": "examples/assets/final-whistle-title.png",
+  "social_clips_enabled": true,
+  "social_clips_count": 2,
+  "social_clips_min_duration": 6,
+  "social_clips_max_duration": 22,
+  "social_clips_padding": 0.35,
+  "social_clips_output_dir": null,
+  "social_clips_source": "banny-range"
 }

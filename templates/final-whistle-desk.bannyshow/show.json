@@ -1,0 +1,511 @@
+{
+  "assets": [
+    {
+      "file": "amrrxj3mdxq6okl.png",
+      "id": "amrrxj3mdxq6okl",
+      "kind": "image",
+      "name": "Screenshot 2026-07-18 at 5.41.32 PM"
+    },
+    {
+      "file": "split-over-shoulder-to-peel-bg.png",
+      "id": "split-over-shoulder-to-peel-bg",
+      "kind": "image",
+      "name": "Split over shoulder toward Peel"
+    },
+    {
+      "file": "gantry-two-shot-bg.png",
+      "id": "gantry-two-shot-bg",
+      "kind": "image",
+      "name": "Gantry two-host wide"
+    },
+    {
+      "file": "gantry-split-closeup-bg.png",
+      "id": "gantry-split-closeup-bg",
+      "kind": "image",
+      "name": "Gantry Split closeup"
+    },
+    {
+      "file": "gantry-peel-closeup-bg.png",
+      "id": "gantry-peel-closeup-bg",
+      "kind": "image",
+      "name": "Gantry Peel closeup"
+    },
+    {
+      "file": "amrzvtc3sd4mey.png",
+      "id": "amrzvtc3sd4mey",
+      "kind": "image",
+      "name": "final-whistle-title"
+    }
+  ],
+  "settings": {
+    "activeScene": 0,
+    "frameH": 9,
+    "frameW": 16,
+    "lightSize": 0
+  },
+  "show": [
+    {
+      "from": 0,
+      "name": "export",
+      "sceneID": "",
+      "to": 120.291
+    }
+  ],
+  "stage": {
+    "audioTracks": [
+      {
+        "clips": [],
+        "cues": [],
+        "fx": {
+          "gain": 1,
+          "high": 0,
+          "low": 0,
+          "mid": 0,
+          "pan": "narrow",
+          "reverb": 0
+        },
+        "hidden": false,
+        "id": "amrrx1u197kviu7",
+        "locked": false,
+        "name": "Dialogue",
+        "presence": [],
+        "solo": false
+      },
+      {
+        "clips": [],
+        "cues": [],
+        "fx": {
+          "gain": 0.16,
+          "high": 0,
+          "low": 0,
+          "mid": 0,
+          "pan": "narrow",
+          "reverb": 0
+        },
+        "hidden": false,
+        "id": "amrrzmuv61h38cjm",
+        "locked": false,
+        "name": "Media 2",
+        "presence": [],
+        "solo": false
+      }
+    ],
+    "backgroundTracks": [
+      {
+        "cues": [
+          {
+            "assetID": "gantry-two-shot-bg",
+            "crop": "cover",
+            "dur": 120.291,
+            "id": "amrrxj59b7c24g1",
+            "start": 0
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "camTo": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "crop": "cover",
+            "dur": 0.5,
+            "id": "spfba09796aae136",
+            "label": "desk-opening-two-shot",
+            "start": 0
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "camTo": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "crop": "cover",
+            "dur": 11.062,
+            "id": "sp0119ad628df019",
+            "label": "shot-split-001",
+            "start": 0.5
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 9.861,
+            "id": "sp0278c410bc2560",
+            "label": "shot-peel-001",
+            "start": 11.612
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 10.566,
+            "id": "sp08f1e2cc998997",
+            "label": "shot-split-002",
+            "start": 21.523
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 8.189,
+            "id": "sp1f5f203713cffc",
+            "label": "shot-peel-002",
+            "start": 32.139
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 12.813,
+            "id": "sp4275426b615171",
+            "label": "shot-split-003",
+            "start": 40.378
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 9.939,
+            "id": "sp97c63cfb8fc829",
+            "label": "shot-peel-003",
+            "start": 53.241
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 11.062,
+            "id": "sp3e10595e39a686",
+            "label": "shot-split-004",
+            "start": 63.23
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 12.029,
+            "id": "sp371981ef01fd45",
+            "label": "shot-peel-004",
+            "start": 74.343
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.79,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 13.048,
+            "id": "spd0638294b90963",
+            "label": "shot-split-005",
+            "start": 86.422
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "camTo": {
+              "x": 0.315,
+              "y": 0.6,
+              "zoom": 1.82
+            },
+            "crop": "cover",
+            "dur": 10.018,
+            "id": "sp89dfe21306e33a",
+            "label": "shot-peel-005",
+            "start": 99.519
+          },
+          {
+            "assetID": "gantry-two-shot-bg",
+            "camFrom": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "camTo": {
+              "x": 0.5,
+              "y": 0.5,
+              "zoom": 1.15
+            },
+            "crop": "cover",
+            "dur": 9.704,
+            "id": "sp968125d7b254b3",
+            "label": "shot-split-006",
+            "start": 109.587
+          }
+        ],
+        "hidden": false,
+        "id": "amrrwjv51yejegj",
+        "locked": false,
+        "name": "Scenes",
+        "presence": []
+      }
+    ],
+    "characters": [
+      {
+        "armedGroups": [
+          "move",
+          "depth",
+          "tilt",
+          "talk",
+          "blink",
+          "jump"
+        ],
+        "baseOutfit": {
+          "5": "eyeliner",
+          "7": "gapteeth",
+          "9": "sweatsuit",
+          "12": "dorthy-hair"
+        },
+        "body": "original",
+        "clips": [],
+        "depth": -0.95,
+        "events": [],
+        "face": -1,
+        "hidden": false,
+        "locked": false,
+        "name": "",
+        "presence": [],
+        "reactions": [],
+        "recStart": {
+          "depth": -1.8900000000000015,
+          "face": -1,
+          "spin": 0,
+          "x": 0.7903703703703686,
+          "zoom": 1
+        },
+        "rotationSpeed": 90,
+        "size": 1.08,
+        "solo": false,
+        "speechVoice": {
+          "automaticMouth": true,
+          "recipe": {
+            "compression": 0,
+            "delayFeedback": 0,
+            "delayMix": 0,
+            "delayTime": 0.12,
+            "distortion": "none",
+            "distortionMix": 0,
+            "doubling": 0,
+            "flavor": 1,
+            "high": 0,
+            "low": 0,
+            "mid": 0,
+            "name": "Natural",
+            "outputGainDB": 0,
+            "pitchCents": 0,
+            "preset": "natural",
+            "reverbMix": 0,
+            "reverbSpace": "mediumRoom"
+          }
+        },
+        "speed": 320,
+        "subs": [],
+        "trackFx": {
+          "gain": 1,
+          "high": 0,
+          "low": 0,
+          "mid": 0,
+          "pan": "follow",
+          "reverb": 0
+        },
+        "voicePitch": 0,
+        "voiceSpeed": 1,
+        "wobble": 7,
+        "x": 0.7903703703703686
+      },
+      {
+        "armedGroups": [
+          "move",
+          "depth",
+          "tilt",
+          "talk",
+          "blink",
+          "jump"
+        ],
+        "baseOutfit": {
+          "5": "glassy",
+          "6": "proff-glasses",
+          "11": "zucco-tshirt",
+          "12": "headphones"
+        },
+        "body": "original",
+        "clips": [],
+        "depth": -0.95,
+        "events": [],
+        "face": 1,
+        "hidden": false,
+        "locked": false,
+        "name": "",
+        "presence": [],
+        "reactions": [],
+        "recStart": {
+          "depth": -1.9100000000000015,
+          "face": 1,
+          "spin": 0,
+          "x": 0.31518518518518485,
+          "zoom": 1
+        },
+        "rotationSpeed": 90,
+        "size": 1.08,
+        "solo": false,
+        "speechVoice": {
+          "automaticMouth": true,
+          "recipe": {
+            "compression": 0,
+            "delayFeedback": 0,
+            "delayMix": 0,
+            "delayTime": 0.12,
+            "distortion": "none",
+            "distortionMix": 0,
+            "doubling": 0,
+            "flavor": 1,
+            "high": 0,
+            "low": 0,
+            "mid": 0,
+            "name": "Natural",
+            "outputGainDB": 0,
+            "pitchCents": 0,
+            "preset": "natural",
+            "reverbMix": 0,
+            "reverbSpace": "mediumRoom"
+          }
+        },
+        "speed": 320,
+        "subs": [],
+        "trackFx": {
+          "gain": 1,
+          "high": 0,
+          "low": 0,
+          "mid": 0,
+          "pan": "follow",
+          "reverb": 0
+        },
+        "voicePitch": 0,
+        "voiceSpeed": 1,
+        "wobble": 7,
+        "x": 0.31518518518518485
+      }
+    ],
+    "cropAnchors": [],
+    "gScale": 0.6,
+    "gSize": 1,
+    "gravity": 1,
+    "imageTracks": [],
+    "lightTracks": [
+      {
+        "cues": [
+          {
+            "dur": 120.291,
+            "from": {
+              "intensity": 1,
+              "size": 120,
+              "x": 0.8,
+              "y": 0.18
+            },
+            "id": "amrrwjv4ojfdv5d",
+            "start": 0
+          }
+        ],
+        "hidden": false,
+        "id": "amrrwjv4ojt3sa4",
+        "locked": false,
+        "name": "Light 1",
+        "presence": []
+      }
+    ],
+    "lights": [
+      {
+        "x": 0.8,
+        "y": 0.18
+      }
+    ],
+    "markers": [],
+    "reactionLibrary": [],
+    "rowOrder": []
+  },
+  "version": 4
+}

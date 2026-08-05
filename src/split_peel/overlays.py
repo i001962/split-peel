@@ -69,14 +69,17 @@ def apply_overlays(
         cue = {
             "assetID": asset_id,
             "dur": round(cue_duration, 3),
-            "from": {
-                "scale": float(overlay.get("scale", 0.3)),
-                "x": float(overlay.get("x", 0.5)),
-                "y": float(overlay.get("y", 0.5)),
-            },
+            "from": _overlay_placement(overlay),
             "id": cue_id,
             "start": round(start, 3),
         }
+        _copy_optional_dict(overlay, cue, "to")
+        _copy_optional_dict(overlay, cue, "pivot")
+        _copy_optional_dict(overlay, cue, "playback")
+        _copy_optional_dict(overlay, cue, "appearance")
+        for optional_key in ("mask", "maskRadius", "rotationSpeed", "speed"):
+            if optional_key in overlay:
+                cue[optional_key] = overlay[optional_key]
         if str(overlay.get("target") or "").lower() == "background":
             cue.pop("from", None)
             cue["crop"] = str(overlay.get("crop") or "cover")
@@ -92,6 +95,7 @@ def apply_overlays(
                 }
             )
         else:
+            visual_layer = _visual_layer(overlay)
             image_tracks.append(
                 {
                     "cues": [cue],
@@ -101,6 +105,86 @@ def apply_overlays(
                     "presence": [],
                 }
             )
+            if visual_layer:
+                _place_visual_track(stage, track_id, visual_layer)
+
+
+def _overlay_placement(overlay: dict[str, Any]) -> dict[str, float]:
+    placement = {
+        "scale": float(overlay.get("scale", 0.3)),
+        "x": float(overlay.get("x", 0.5)),
+        "y": float(overlay.get("y", 0.5)),
+    }
+    if "rotation" in overlay:
+        placement["rotation"] = float(overlay["rotation"])
+    return placement
+
+
+def _copy_optional_dict(source: dict[str, Any], destination: dict[str, Any], key: str) -> None:
+    value = source.get(key)
+    if isinstance(value, dict):
+        destination[key] = value
+
+
+def _visual_layer(overlay: dict[str, Any]) -> str:
+    raw = str(overlay.get("layer") or overlay.get("visualLayer") or "").strip().lower()
+    aliases = {
+        "back": "behind-cast",
+        "behind": "behind-cast",
+        "behind-cast": "behind-cast",
+        "behind-cast-media": "behind-cast",
+        "in-front": "front-of-cast",
+        "front": "front-of-cast",
+        "front-of-cast": "front-of-cast",
+        "foreground": "front-of-cast",
+    }
+    return aliases.get(raw, "")
+
+
+def _place_visual_track(stage: dict[str, Any], track_id: str, layer: str) -> None:
+    row_order = _row_order_without_track(stage, track_id)
+    for key in _default_row_order(stage, exclude_track_id=track_id):
+        if key not in row_order:
+            row_order.append(key)
+
+    character_keys = [f"c-{index}" for index, _ in enumerate(stage.get("characters") or [])]
+    if layer == "behind-cast":
+        insert_at = _first_index(row_order, character_keys)
+    else:
+        insert_at = _last_index(row_order, character_keys)
+        insert_at = len(row_order) if insert_at is None else insert_at + 1
+
+    if insert_at is None:
+        insert_at = len(row_order)
+    row_order.insert(insert_at, track_id)
+    stage["rowOrder"] = row_order
+
+
+def _row_order_without_track(stage: dict[str, Any], track_id: str) -> list[str]:
+    row_order = stage.get("rowOrder")
+    if not isinstance(row_order, list):
+        return []
+    return [str(key) for key in row_order if str(key) != track_id]
+
+
+def _default_row_order(stage: dict[str, Any], exclude_track_id: str) -> list[str]:
+    keys = []
+    keys.extend(str(track.get("id")) for track in stage.get("backgroundTracks") or [] if track.get("id"))
+    keys.extend(f"c-{index}" for index, _ in enumerate(stage.get("characters") or []))
+    keys.extend(str(track.get("id")) for track in stage.get("imageTracks") or [] if track.get("id"))
+    keys.extend(str(track.get("id")) for track in stage.get("audioTracks") or [] if track.get("id"))
+    keys.extend(str(track.get("id")) for track in stage.get("lightTracks") or [] if track.get("id"))
+    return [key for key in keys if key != exclude_track_id]
+
+
+def _first_index(row_order: list[str], keys: list[str]) -> int | None:
+    indexes = [row_order.index(key) for key in keys if key in row_order]
+    return min(indexes) if indexes else None
+
+
+def _last_index(row_order: list[str], keys: list[str]) -> int | None:
+    indexes = [row_order.index(key) for key in keys if key in row_order]
+    return max(indexes) if indexes else None
 
 
 def _overlay_applies_to_episode(overlay: dict[str, Any], episode_type: str | None) -> bool:

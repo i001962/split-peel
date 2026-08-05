@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from split_peel.banny_cli import BannyCliError, resolve_banny_cli
+from split_peel.banny_cli import BannyCli, BannyCliError, resolve_banny_cli
 
 
 def test_resolve_banny_cli_prefers_explicit_binary(tmp_path: Path):
@@ -35,3 +35,18 @@ def test_banny_cli_raises_on_failed_command(tmp_path: Path):
 
     with pytest.raises(BannyCliError, match="exit 2"):
         cli.validate(tmp_path / "show.bs")
+
+
+def test_banny_cli_ship_range_uses_range_arguments(tmp_path: Path):
+    commands = []
+
+    class RecordingCli(BannyCli):
+        def run(self, args):
+            commands.append(args)
+            return None
+
+    cli = RecordingCli(["banny"])
+
+    cli.ship_range(tmp_path / "show.bs", tmp_path / "clip.mp4", "720", 1.25, 9.0)
+
+    assert commands == [["ship", str(tmp_path / "show.bs"), str(tmp_path / "clip.mp4"), "--720", "--range", "1.25", "9"]]

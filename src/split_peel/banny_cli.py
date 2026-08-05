@@ -61,6 +61,10 @@ class BannyCli:
         out.parent.mkdir(parents=True, exist_ok=True)
         return self.run(["ship", str(show), str(out), f"--{render_size}"])
 
+    def ship_range(self, show: Path, out: Path, render_size: str, start: float, end: float) -> BannyCommandResult:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return self.run(["ship", str(show), str(out), f"--{render_size}", "--range", _seconds(start), _seconds(end)])
+
 
 def resolve_banny_cli(banny_bin: Optional[Path] = None, checkout_path: Optional[Path] = None) -> BannyCli:
     explicit_bin = banny_bin or _env_path("BANNY_BIN")

@@ -1,6 +1,6 @@
 {
   "episode_slug": "eng1-no-feed",
-  "template_path": "outputs/openai-voiced.bs",
+  "template_path": "templates/final-whistle-desk.bannyshow",
   "run_dir": "runs/eng1-no-feed",
   "output_bs": "outputs/eng1-no-feed.bs",
   "output_bannyshow": "outputs/eng1-no-feed.bannyshow",

@@ -82,6 +82,111 @@ def test_apply_overlays_can_target_background_tracks(tmp_path):
     assert "from" not in show["stage"]["backgroundTracks"][0]["cues"][0]
 
 
+def test_apply_overlays_can_place_visual_tracks_around_cast(tmp_path):
+    behind = tmp_path / "tactics-board.png"
+    front = tmp_path / "desk.png"
+    behind.write_bytes(b"fake png")
+    front.write_bytes(b"fake png")
+    package_dir = tmp_path / "show"
+    show = {
+        "assets": [],
+        "stage": {
+            "audioTracks": [{"id": "dialogue"}],
+            "backgroundTracks": [{"id": "scenes", "name": "Scenes", "cues": []}],
+            "characters": [{"body": "original"}, {"body": "original"}],
+            "imageTracks": [],
+            "lightTracks": [],
+            "rowOrder": [],
+        },
+    }
+
+    apply_overlays(
+        package_dir,
+        show,
+        [
+            {"name": "tactics board", "file": str(behind), "layer": "behind-cast", "start": 0, "dur": "full"},
+            {"name": "desk", "file": str(front), "layer": "front-of-cast", "start": 0, "dur": "full"},
+        ],
+        duration=10,
+    )
+
+    behind_track = show["stage"]["imageTracks"][0]["id"]
+    front_track = show["stage"]["imageTracks"][1]["id"]
+    assert show["stage"]["rowOrder"] == ["scenes", behind_track, "c-0", "c-1", front_track, "dialogue"]
+
+
+def test_apply_overlays_normalizes_partial_row_order_before_layering(tmp_path):
+    source = tmp_path / "lower-third.png"
+    source.write_bytes(b"fake png")
+    package_dir = tmp_path / "show"
+    show = {
+        "assets": [],
+        "stage": {
+            "audioTracks": [{"id": "dialogue"}],
+            "backgroundTracks": [{"id": "scenes", "name": "Scenes", "cues": []}],
+            "characters": [{"body": "original"}, {"body": "original"}],
+            "imageTracks": [],
+            "rowOrder": ["scenes"],
+        },
+    }
+
+    apply_overlays(
+        package_dir,
+        show,
+        [{"name": "lower third", "file": str(source), "layer": "front", "start": 1, "dur": 3}],
+        duration=10,
+    )
+
+    track_id = show["stage"]["imageTracks"][0]["id"]
+    assert show["stage"]["rowOrder"] == ["scenes", "c-0", "c-1", track_id, "dialogue"]
+
+
+def test_apply_overlays_passes_through_motion_and_appearance_fields(tmp_path):
+    source = tmp_path / "highlight.png"
+    source.write_bytes(b"fake png")
+    package_dir = tmp_path / "show"
+    show = {
+        "assets": [],
+        "stage": {
+            "audioTracks": [],
+            "imageTracks": [],
+        },
+    }
+
+    apply_overlays(
+        package_dir,
+        show,
+        [
+            {
+                "name": "highlight",
+                "file": str(source),
+                "start": 1,
+                "dur": 4,
+                "x": 0.5,
+                "y": 0.4,
+                "scale": 0.3,
+                "rotation": -4,
+                "to": {"x": 0.58, "y": 0.42, "scale": 0.34, "rotation": 2},
+                "pivot": {"x": 0.12, "y": 0.88},
+                "mask": "roundedRectangle",
+                "maskRadius": 0.08,
+                "appearance": {"shadow": 0.35, "outline": 2},
+                "playback": {"loop": True, "rate": 1.0},
+            }
+        ],
+        duration=10,
+    )
+
+    cue = show["stage"]["imageTracks"][0]["cues"][0]
+    assert cue["from"] == {"scale": 0.3, "x": 0.5, "y": 0.4, "rotation": -4.0}
+    assert cue["to"] == {"x": 0.58, "y": 0.42, "scale": 0.34, "rotation": 2}
+    assert cue["pivot"] == {"x": 0.12, "y": 0.88}
+    assert cue["mask"] == "roundedRectangle"
+    assert cue["maskRadius"] == 0.08
+    assert cue["appearance"] == {"shadow": 0.35, "outline": 2}
+    assert cue["playback"] == {"loop": True, "rate": 1.0}
+
+
 def test_apply_background_overlay_can_replace_existing_background(tmp_path):
     source = tmp_path / "stadium.png"
     source.write_bytes(b"fake png")

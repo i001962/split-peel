@@ -1,6 +1,6 @@
 {
   "episode_slug": "final-whistle-eng1",
-  "template_path": "outputs/openai-voiced.bs",
+  "template_path": "templates/final-whistle-desk.bannyshow",
   "run_dir": "runs/final-whistle-eng1",
   "output_bs": "outputs/final-whistle-eng1.bs",
   "output_bannyshow": "outputs/final-whistle-eng1.bannyshow",

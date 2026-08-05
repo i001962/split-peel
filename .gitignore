@@ -20,6 +20,8 @@ templates/*.bs
 templates/*.bannyshow
 !templates/proof-patrol-starter.bannyshow/
 !templates/proof-patrol-starter.bannyshow/**
+!templates/final-whistle-desk.bannyshow/
+!templates/final-whistle-desk.bannyshow/**
 
 # Accidental root-level video exports.
 /*.mp4

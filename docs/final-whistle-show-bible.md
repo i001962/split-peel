@@ -190,6 +190,10 @@ Use sparingly and rotate them. Do not let any one bit become the default answer.
 - Fanbases declaring eras after one match.
 - The desk behaving like a stadium, courtroom, pub, or confessional.
 
+### Recurring Offscreen Characters
+
+- Gary: Final Whistle's associate producer and recurring fantasy-league liability. He plays in the hosts' fantasy league, makes confidently bad FPL decisions, asks for admin privileges he should not have, and becomes the go-to name when Split and Peel need an offscreen human to blame. Gary is not malicious; he is a chaos merchant with spreadsheet access.
+
 ## Guardrails
 
 Do:
