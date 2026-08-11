@@ -40,6 +40,13 @@ turning this into a filing system.
   that the first draft was too generic. Add football-specific names, roles,
   fixture texture, pundit references, kickoff timing, FPL pain, and recurring
   staff bits before voice generation, not after.
+- For Farcaster-led episodes, write the channel as a social room, not a topic
+  feed. Identify the people in the thread and assign each a moment status:
+  proposing, resisting, overbuilding, misunderstanding, table-policing, or
+  quietly escalating the bit.
+- Plan one or two 12-20 second social bites during scripting. The episode can
+  still run longer, but at least one exchange should be self-contained enough
+  to trim directly from the final MP4.
 - Long inline actor directions can make ElevenLabs stretch short lines into
   unusable reads.
 - Good comedy directions define relationship and moment status: who is baiting,
@@ -70,6 +77,9 @@ turning this into a filing system.
 - If a script uses named Farcaster or channel people as texture, collect every
   mentioned account's PFP before packaging. Do not stop at the loudest two
   accounts; scan `sourceCasts`, final dialogue, and subtitles for late mentions.
+- Treat PFPs as production identifiers, not decorative stickers. Normalize them
+  to a consistent square canvas, use one scale by default, and review any manual
+  Studio movement against a same-size reference before final render.
 - Time PFP cues to the spoken mention, not just the segment topic. Use subtitle
   start times from the final `.bannyshow/show.json` as the source of truth after
   Studio edits, because script line timings can drift after retiming or manual
@@ -125,6 +135,9 @@ turning this into a filing system.
   Split's deadpan side-eye, Peel's innocent over-explanation, compliance panic,
   and short hot-mic pauses. Reactions should stay short, usually under two
   seconds, so they can attach cleanly to punchlines and listener beats.
+- Keep default Split and Peel movement sparse but alive: blinks and small nods
+  should read as presence, while reaction instances should be reserved for
+  punchlines, listener beats, and clear emotional turns.
 - Banny schema v4 allows exactly one `Scenes` background track. Speaker cuts
   must become adjacent camera cues on that track, not a second camera
   background track.

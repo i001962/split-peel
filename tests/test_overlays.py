@@ -270,6 +270,27 @@ def test_build_pfp_overlays_uses_script_line_timing(tmp_path, monkeypatch):
     assert manifest["overlays"][0]["name"] == "@fan pfp"
     assert manifest["overlays"][0]["start"] == 9.8
     assert manifest["overlays"][0]["dur"] == 5.0
+    assert manifest["overlays"][0]["scale"] == 0.12
+    assert manifest["overlays"][0]["assetPolicy"] == "square-pfp-512"
+
+
+def test_build_pfp_overlays_uses_farcaster_mentions_as_asset_source(tmp_path, monkeypatch):
+    def fake_download(url: str, username: str, asset_dir: Path) -> Path:
+        path = asset_dir / f"{username}.png"
+        path.write_bytes(b"fake")
+        return path
+
+    monkeypatch.setattr("split_peel.overlays._download_pfp", fake_download)
+    script = {
+        "sourceCasts": [],
+        "farcasterMentions": [{"username": "latefan", "pfpUrl": "https://example.com/latefan.png"}],
+        "dialogue": [{"sourceUsername": "latefan", "start": 14.0}],
+    }
+
+    manifest = build_pfp_overlays(script, tmp_path)
+
+    assert manifest["overlays"][0]["name"] == "@latefan pfp"
+    assert manifest["overlays"][0]["start"] == 13.8
 
 
 def test_build_key_moment_takeover_overlays_uses_dialogue_timing(tmp_path):

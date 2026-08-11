@@ -139,6 +139,15 @@ Capture:
 - guardrail decisions
 - visual gag ideas that may be useful later
 
+For Farcaster-led episodes, also capture:
+
+- 4 to 6 thread people who behave like characters in the room
+- each person's social role in the bit, such as proposer, blocker, overbuilder,
+  table cop, sincere chaos agent, or accidental straight man
+- the exact spoken line where each PFP should appear
+- one or two candidate 12-20 second social clips before voice generation
+- tired joke shapes to ban from the draft
+
 ### After The Episode
 
 Write or update `runs/<episode>/reflection.md`, then promote only durable lessons to `docs/production-learnings.md`.
@@ -244,4 +253,3 @@ Before moving to `runs/<episode>/script.json`, confirm:
 - The idea does not depend on unverified claims.
 - Any outrageous cartoon event expresses a real football feeling.
 - The episode leaves fans feeling seen, not mocked.
-

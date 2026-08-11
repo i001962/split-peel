@@ -157,14 +157,14 @@ def test_replace_character_subtitles_uses_custom_speaker_order(monkeypatch):
     stage = {"characters": [{"subs": []}, {"subs": []}]}
     monkeypatch.setenv("SPLIT_PEEL_CAPTION_MAX_CHARS", "40")
     clips = [
-        VoiceClip("perry1", "perry", "Perry line", 0.5, 1.0, []),
-        VoiceClip("faux1", "fauxnana", "Fauxnana line", 2.0, 1.0, []),
+        VoiceClip("guest1", "guest_host", "Guest line", 0.5, 1.0, []),
+        VoiceClip("analyst1", "guest_analyst", "Analyst line", 2.0, 1.0, []),
     ]
 
-    _replace_character_subtitles(stage, clips, {"perry": 0, "fauxnana": 1})
+    _replace_character_subtitles(stage, clips, {"guest_host": 0, "guest_analyst": 1})
 
-    assert stage["characters"][0]["subs"] == [{"dur": 1.0, "start": 0.5, "text": "Perry line"}]
-    assert stage["characters"][1]["subs"] == [{"dur": 1.0, "start": 2.0, "text": "Fauxnana line"}]
+    assert stage["characters"][0]["subs"] == [{"dur": 1.0, "start": 0.5, "text": "Guest line"}]
+    assert stage["characters"][1]["subs"] == [{"dur": 1.0, "start": 2.0, "text": "Analyst line"}]
 
 
 def test_apply_character_appearance_sets_split_default_look():

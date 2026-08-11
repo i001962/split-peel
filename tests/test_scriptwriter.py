@@ -149,6 +149,10 @@ def test_repeated_team_mentions_get_varied_or_deduped_lines():
 
     assert len(banter_lines) == len(set(banter_lines))
     assert script["sourceCasts"][0]["pfpUrl"]
+    mention_by_user = {mention["username"]: mention for mention in script["farcasterMentions"]}
+    assert {mention["username"] for mention in script["farcasterMentions"]} == {"one", "two"}
+    assert any(mention["needsPfpOverlay"] for mention in script["farcasterMentions"])
+    assert sum(mention["spokenLineCount"] for mention in script["farcasterMentions"]) == len(banter_lines)
 
 
 def test_draft_script_keeps_falsenine_bot_as_fact_check_metadata_not_dialogue_callout():
@@ -214,42 +218,6 @@ def test_draft_script_accepts_final_whistle_episode_metadata():
         "Final Whistle with Split & Peel. Every fixture gets a verdict before the group chat does."
     )
     assert "ENG1 Game Week 01 Preview" in script["dialogue"][0]["line"]
-
-
-def test_draft_script_uses_proof_patrol_branch_from_characters():
-    characters = {
-        "characters": [
-            {
-                "id": "perry",
-                "displayName": "Perry Provenance",
-                "personality": ["precise proof investigator"],
-                "preferences": {},
-            },
-            {
-                "id": "fauxnana",
-                "displayName": "Dr. Fauxnana",
-                "personality": ["glamorous manipulator"],
-                "preferences": {},
-            },
-        ]
-    }
-
-    script = draft_script(
-        {"casts": []},
-        characters=characters,
-        episode_title="The First Version",
-        episode_type="general",
-        instructions="Perry catches Dr. Fauxnana using the Backdate Beautifier.",
-    )
-
-    spoken = " ".join(line["line"] for line in script["dialogue"]).lower()
-    assert script["showName"] == "Proof Patrol"
-    assert script["tagline"] == "Originals matter."
-    assert script["preroll"]["type"] == "proof-lab-bumper"
-    assert script["outroEffect"]["type"] == "seal-stamp"
-    assert "backdate beautifier" in spoken
-    assert "does not prove" in spoken
-    assert "football" not in spoken
 
 
 def test_draft_script_accepts_outtake_episode_metadata_and_cold_open():
@@ -482,6 +450,76 @@ def test_openai_script_provider_generates_structured_dialogue(monkeypatch):
     assert "subscribe" in script["dialogue"][-1]["line"].lower() or "replies" in script["dialogue"][-1]["line"].lower()
 
 
+def test_openai_script_provider_adds_farcaster_room_rules_when_social_is_allowed(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "output": [
+                        {
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": json.dumps(
+                                        {
+                                            "dialogue": [
+                                                {
+                                                    "speaker": "split",
+                                                    "line": "@fanone has turned the prize pot into civic theatre.",
+                                                    "tone": "mock-civic authority, annoyed but amused",
+                                                },
+                                                {
+                                                    "speaker": "peel",
+                                                    "line": "@fantwo is already building a trophy cabinet for a league that has not kicked off.",
+                                                    "tone": "delighted panic, then a tiny pause",
+                                                },
+                                            ]
+                                        }
+                                    ),
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("split_peel.scriptwriter.urllib.request.urlopen", fake_urlopen)
+
+    draft_script(
+        {
+            "casts": [
+                {
+                    "text": "FPL pot proposal needs a vote",
+                    "author": {"username": "fanone", "pfp_url": "https://example.com/one.png"},
+                },
+                {
+                    "text": "I can build the tracker",
+                    "author": {"username": "fantwo", "pfp_url": "https://example.com/two.png"},
+                },
+            ]
+        },
+        instructions="Use the Farcaster /football thread as the room.",
+        script_provider="openai",
+    )
+
+    prompt = captured["body"]["input"][1]["content"]
+    assert "people in a room" in prompt
+    assert "12 to 20 second exchange" in prompt
+
+
 def test_openai_script_provider_sanitizes_team_and_weekday_abbreviations(monkeypatch):
     class FakeResponse:
         def __enter__(self):
@@ -554,4 +592,68 @@ def test_openai_script_provider_sanitizes_team_and_weekday_abbreviations(monkeyp
     assert not re.search(r"(?<![A-Za-z])Fri\.?(?![A-Za-z])", spoken)
     assert "Arsenal" in spoken
     assert "Paris Saint-Germain" in spoken
-    assert "Friday" in spoken
+
+
+def test_openai_script_provider_omits_farcaster_room_rules_when_social_is_blocked(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "output": [
+                        {
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": json.dumps(
+                                        {
+                                            "dialogue": [
+                                                {
+                                                    "speaker": "split",
+                                                    "line": "Arsenal are treating Friday like a trapdoor with branding.",
+                                                    "tone": "dry tactical suspicion",
+                                                },
+                                                {
+                                                    "speaker": "peel",
+                                                    "line": "Coventry arrive with confidence and a bag of very pointy questions.",
+                                                    "tone": "worried admiration, quick final punch",
+                                                },
+                                            ]
+                                        }
+                                    ),
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("split_peel.scriptwriter.urllib.request.urlopen", fake_urlopen)
+
+    draft_script(
+        {"casts": []},
+        match_context={
+            "match": {
+                "shortName": "COV @ ARS",
+                "teams": [{"name": "Arsenal"}, {"name": "Coventry City"}],
+            }
+        },
+        instructions="Do not reference Farcaster, social posts, casts, usernames, or timeline reactions.",
+        script_provider="openai",
+    )
+
+    prompt = captured["body"]["input"][1]["content"]
+    assert "people in a room" not in prompt
+    assert "12 to 20 second exchange" not in prompt

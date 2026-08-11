@@ -113,7 +113,7 @@ With the default ElevenLabs provider, each uncached dialogue line becomes a host
 - `runs/<episode_slug>/script.json` has the final spoken lines.
 - Team names and weekdays are spoken in full.
 - Episode type is correct: `game-week-preview`, `match-event`, `recap`, `general`, or `outtake`.
-- Overlay manifests point at the intended background, title card, logos, and generated panels. Use `layer: "behind-cast"` for context screens and `layer: "front-of-cast"` for desks, lower thirds, proof seals, feed cards, or other interruptions that should sit over the characters in the current Banny Studio feature set.
+- Overlay manifests point at the intended background, title card, logos, and generated panels. Use `layer: "behind-cast"` for context screens and `layer: "front-of-cast"` for desks, lower thirds, feed cards, or other interruptions that should sit over the characters in the current Banny Studio feature set.
 - Outtake builds should not include the normal title lockup or polished welcome/signoff.
 
 After audio is generated, prefer Banny Studio for visual touch-ups and `retime-mouth` for timing repairs. Only rebuild with hosted TTS when spoken dialogue, tone direction, speaker assignment, or character voice settings change.

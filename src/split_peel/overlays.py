@@ -209,12 +209,17 @@ def _episode_type_set(value: Any) -> set[str]:
     return set()
 
 
-def build_pfp_overlays(script: dict[str, Any], asset_dir: Path, limit: int = 5) -> dict[str, Any]:
+def build_pfp_overlays(script: dict[str, Any], asset_dir: Path, limit: int = 8) -> dict[str, Any]:
     source_casts = {
         cast.get("username"): cast
         for cast in script.get("sourceCasts") or []
         if cast.get("username") and cast.get("pfpUrl")
     }
+    for mention in script.get("farcasterMentions") or []:
+        username = mention.get("username")
+        pfp_url = mention.get("pfpUrl")
+        if username and pfp_url and username not in source_casts:
+            source_casts[username] = {"username": username, "pfpUrl": pfp_url}
     if not source_casts:
         return {"overlays": []}
 
@@ -240,6 +245,7 @@ def build_pfp_overlays(script: dict[str, Any], asset_dir: Path, limit: int = 5) 
                 "x": position["x"],
                 "y": position["y"],
                 "scale": 0.12,
+                "assetPolicy": "square-pfp-512",
             }
         )
         used.add(username)

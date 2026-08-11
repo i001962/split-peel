@@ -444,8 +444,8 @@ Use transparent PNGs for desks and logos. Coordinates are normalized Banny stage
 
 For the current Banny Studio feature set, set `layer` or `visualLayer` to control whether a visual sits behind or in front of the cast:
 
-- `behind-cast`: tactics boards, ghosted xG maps, stadium screens, proof-lab monitors.
-- `front-of-cast`: desks, lower thirds, live-feed cards, referee cards, proof seals, tamper alerts.
+- `behind-cast`: tactics boards, ghosted xG maps, and stadium screens.
+- `front-of-cast`: desks, lower thirds, live-feed cards, and referee cards.
 
 If no layer is set, the generator leaves `stage.rowOrder` alone. Backgrounds should still use `target: "background"` rather than `layer`.
 
