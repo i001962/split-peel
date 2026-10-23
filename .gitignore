@@ -27,3 +27,9 @@ templates/*.bannyshow
 /*.mp4
 /*.mov
 /*.m4v
+
+# Newsletter private state and provider credentials
+.env.*
+!.env.example
+memory/
+runs/

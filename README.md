@@ -731,3 +731,8 @@ Milestone one is implemented:
 - unit tests for script drafting and package round-tripping
 
 The next useful step is to build a real scoreboard/lower-third PNG from `match_context.json`, not just floating team logos.
+
+
+## Final Whistle newsletter
+
+Branded email previews, cached manager/league personalization, single-recipient test sends, and reviewed subscriber delivery are available through `python -m split_peel.newsletter`. See [setup and VPS testing](docs/final-whistle-newsletter.md).

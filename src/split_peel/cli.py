@@ -299,7 +299,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     banner_parser.add_argument("--brand-lockup", type=Path, default=DEFAULT_BRAND_LOCKUP)
     banner_parser.add_argument("--show-safe-area", action="store_true")
 
+    from split_peel.newsletter import add_commands as add_newsletter_commands, run_command as run_newsletter_command
+    add_newsletter_commands(subparsers)
     args = parser.parse_args(argv)
+    if args.command == "newsletter":
+        return run_newsletter_command(args)
 
     if args.command == "fetch-feed":
         payload = fetch_research_feed(
