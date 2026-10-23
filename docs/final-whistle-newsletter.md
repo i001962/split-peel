@@ -83,3 +83,10 @@ PYTHONPATH=src python3 -m split_peel.newsletter stats --plan runs/EPISODE/newsle
 ```
 
 This reads AgentMail message labels for indicated delivery, bounce and complaint status, and the protected website `/api/admin/newsletter-stats?issue=VIDEO_ID` for YouTube/X link requests and distinct subscriber links. Uncollected provider metrics stay unavailable. The shared agentmail.to inbox does not enable a custom-domain open pixel; opens are unavailable. Security scanners and bots can follow links, so click counts do not establish human readers, YouTube views, or X follows. Watch time, actual follows, and reply attribution remain unavailable. Review stats after distribution and during later writers' room reflections; treat them as measurements with these limits, not evidence that a joke worked.
+
+
+## Newsletter-only readers and the exact uploaded show
+
+Email-only registration on `/join` does not require an FPL entry or league. These readers receive all shared editorial sections, the published show's thumbnail and watch button, and Split's X link. They get no invented personalization and do not count toward league call-out thresholds. Linking a team later upgrades the same email profile without creating a second subscription. Rejoining the shared newsletter never clears an existing linked team or memberships. No FPL requests are made when a snapshot contains only newsletter-only readers.
+
+Both thumbnail and watch button resolve to the exact video in the completed upload receipt, including when click tracking is enabled. They never use the channel or a latest-video lookup. Inconsistent receipt video IDs block preparation. Static examples link to one explicit example episode; real distribution uses its own just-published episode.

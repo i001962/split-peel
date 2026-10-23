@@ -92,6 +92,9 @@ def init_exhaust(season, gameweek, out):
 def snapshot(rows, fetch=get_json):
     """Fetch shared metadata once; only registered managers' squads, with full standings pagination."""
     rows = active(rows)
+    if not any(r.get("fpl_entry_id") for r in rows):
+        return {"version": 1, "season": None, "gameweek": None, "observed_at": now(), "final": False,
+                "managers": {}, "leagues": {}, "warnings": [], "episode_callout_eligible_leagues": []}
     boot = fetch(FPL + "/bootstrap-static/")
     event = next((e for e in boot["events"] if e.get("is_current")), None)
     if not event:
@@ -149,6 +152,8 @@ def youtube_url(receipt):
     video_id = value.get("video_id")
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id)):
         raise ValueError("YouTube receipt has no valid video ID")
+    if value.get("response", {}).get("id", video_id) != video_id:
+        raise ValueError("YouTube receipt video ID disagrees with upload response")
     return f"https://www.youtube.com/watch?v={video_id}", video_id
 
 
