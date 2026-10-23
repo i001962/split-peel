@@ -23,6 +23,7 @@ youtube = [
 
 [project.scripts]
 split-peel = "split_peel.cli:main"
+final-whistle-newsletter = "split_peel.newsletter:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

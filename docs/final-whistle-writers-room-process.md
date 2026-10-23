@@ -253,3 +253,8 @@ Before moving to `runs/<episode>/script.json`, confirm:
 - The idea does not depend on unverified claims.
 - Any outrageous cartoon event expresses a real football feeling.
 - The episode leaves fans feeling seen, not mocked.
+
+
+## Match Report newsletter handoff
+
+Follow [the newsletter setup and schema](final-whistle-newsletter.md). Emit and validate `exhaust.json` beside daily research. Keep league call-outs local and raw editorial notes private. At finished-show handoff provide public-safe `newsletter-brief.json` title/hook and the relevant exhaust. Prepare one combined email per subscriber only after public YouTube publication. Reuse shared FPL snapshots roughly twice weekly. Three distinct registered managers unlock eligibility for episode call-outs only. Never send emails or DMs from daily research.
