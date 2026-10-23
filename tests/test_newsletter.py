@@ -239,3 +239,45 @@ def test_issue_report_distinguishes_acceptance_delivery_and_unavailable_metrics(
     refreshed = report_issue(plan, tmp_path / 'state', refresh=True, provider=provider)
     assert refreshed['counts']['delivered'] == 1 and refreshed['counts']['opened'] is None
     assert list((tmp_path / 'state' / 'issue-history').rglob('*.json'))
+
+
+@pytest.mark.parametrize('tracking', [False, True])
+def test_thumbnail_and_button_both_open_exact_uploaded_episode(tmp_path, inputs, tracking, monkeypatch):
+    import re
+    from split_peel.newsletter_metrics import register_issue
+    inputs['tracking'] = tracking
+    inputs['youtube']['video_id'] = 'newShow123A'
+    inputs['youtube']['response']['id'] = 'newShow123A'
+    plan = read_json(prepare(tmp_path, inputs))
+    html = plan['messages'][0]['html']
+    image_link = re.search(r'<a href="([^"]+)"><img src="https://i.ytimg.com/vi/newShow123A/hqdefault.jpg"', html)[1]
+    button_link = re.search(r'<a href="([^"]+)"[^>]*>▶ Watch Final Whistle on YouTube', html)[1]
+    assert image_link == button_link
+    assert plan['watch_url'] == 'https://www.youtube.com/watch?v=newShow123A'
+    assert '@split-peel' not in image_link
+    if tracking:
+        requests = []
+        monkeypatch.setattr('split_peel.newsletter_metrics.app_request', lambda path, body: requests.append(body))
+        register_issue(plan)
+        assert requests[0]['youtubeUrl'] == plan['watch_url']
+    else:
+        assert image_link == plan['watch_url']
+
+
+def test_mismatched_upload_receipt_is_rejected(inputs):
+    inputs['youtube']['response']['id'] = 'otherShow123'
+    with pytest.raises(ValueError, match='disagrees'):
+        youtube_url(inputs['youtube'])
+
+
+def test_newsletter_only_subscriber_gets_shared_edition_without_fpl_calls(tmp_path, inputs):
+    inputs['rows'][0].update(fpl_entry_id=None, league_id=None, leagues=[])
+    evidence = snapshot(inputs['rows'], lambda url: pytest.fail('No FPL requests for newsletter-only readers'))
+    assert not evidence['managers'] and not evidence['leagues']
+    inputs['evidence'] = evidence
+    plan = read_json(prepare(tmp_path, inputs))
+    assert len(plan['messages']) == 1 and not plan['needs_review']
+    html = plan['messages'][0]['html']
+    assert 'A shared football fact.' in html
+    assert 'YOUR LEAGUE' not in html and 'On your squad radar' not in html
+    assert 'Unsubscribe' in html

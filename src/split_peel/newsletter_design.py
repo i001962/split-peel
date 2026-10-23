@@ -25,7 +25,7 @@ def render_email(*, title, hook, watch, unsubscribe, facts=(), leagues=(), squad
     thumbnail = thumbnail or ('https://i.ytimg.com/vi/WXxWz3Bb6GY/hqdefault.jpg' if example else None)
     hero = f'<a href="{watch}"><img src="{safe_url(thumbnail)}" alt="Watch Final Whistle on YouTube" width="536" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:8px;margin:22px 0 16px"></a>' if thumbnail else ''
     editorial = ''.join('<h2 style="margin:28px 0 12px;font-size:21px;color:#10162b">'+esc(section['heading'])+'</h2>'+''.join(paragraph(line) for line in section['paragraphs']) for section in sections)
-    warning = '''<tr><td style="background:#fff1cf;padding:13px 28px;color:#604610;font-size:12px;line-height:1.6"><strong>DESIGN EXAMPLE</strong> · Fictional managers, scores and squad notes. The watch button opens the real show channel. This is not a live Match Report.</td></tr>''' if example else ''
+    warning = '''<tr><td style="background:#fff1cf;padding:13px 28px;color:#604610;font-size:12px;line-height:1.6"><strong>DESIGN EXAMPLE</strong> · Fictional managers, scores and squad notes. The thumbnail and watch button open the real example episode. This is not a live Match Report.</td></tr>''' if example else ''
     sections = ''
     if facts:
         sections += '<h2 style="margin:30px 0 14px;font-size:21px;color:#10162b">From the desk</h2>'
@@ -69,7 +69,7 @@ def render_email(*, title, hook, watch, unsubscribe, facts=(), leagues=(), squad
 
 
 def examples():
-    common = dict(watch='https://www.youtube.com/@split-peel', unsubscribe='https://final-whistle.app/join', example=True,
+    common = dict(watch='https://www.youtube.com/watch?v=WXxWz3Bb6GY', unsubscribe='https://final-whistle.app/join', example=True,
                   snapshot_label='Illustrative GW8 snapshot · scores and notes are fictional.',
                   sections=[dict(heading='The talking point', paragraphs=['A tiny decision can own your whole weekend. This sample section makes space for the football story behind the new episode.']), dict(heading='Split’s notebook', paragraphs=['One clear takeaway, a little argument, and a reason to watch the desk work it out. The final wording follows each issue’s editorial instructions.'])])
     return {
@@ -81,8 +81,8 @@ def examples():
              facts=['Watch the desk argue through the fine line between a brave captaincy call and a lucky escape.'],
              leagues=[dict(name='Farcaster Fantasy League', own=dict(rank=3,event_total=81,total=548),notes=['Up two places. The fictional leader is nine points away.'],url='https://final-whistle.app/report/143466'),
                       dict(name='Sunday League Office XI — example', own=dict(rank=1,event_total=81,total=548),notes=['Top of the fictional office table. Monday morning has become a presentation opportunity.'],url='https://final-whistle.app/')]),
-        '03-show-only': dict(common, title='The desk is open. Your table can wait.', hook='A fresh Final Whistle episode, one very specific football argument, and Peel finding a way to make it personal.',
-             facts=['This is the lightweight edition: a strong reason to watch, a useful takeaway, and room to breathe.', 'When league data is unavailable, we send the shared show edition and leave out unverified numbers.'])
+        '03-show-only': dict(common, title='Football first. The desk is open.', hook='A fresh Final Whistle episode, one very specific football argument, and Peel finding a way to make it personal.',
+             facts=['The show’s strongest take, a useful football story, and room for a proper argument.', 'Your Match Report works without an FPL team. Follow the show, enjoy the football, and link a team later if you fancy the league sections.'])
     }
 
 
