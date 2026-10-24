@@ -90,3 +90,8 @@ This reads AgentMail message labels for indicated delivery, bounce and complaint
 Email-only registration on `/join` does not require an FPL entry or league. These readers receive all shared editorial sections, the published show's thumbnail and watch button, and Split's X link. They get no invented personalization and do not count toward league call-out thresholds. Linking a team later upgrades the same email profile without creating a second subscription. Rejoining the shared newsletter never clears an existing linked team or memberships. No FPL requests are made when a snapshot contains only newsletter-only readers.
 
 Both thumbnail and watch button resolve to the exact video in the completed upload receipt, including when click tracking is enabled. They never use the channel or a latest-video lookup. Inconsistent receipt video IDs block preparation. Static examples link to one explicit example episode; real distribution uses its own just-published episode.
+
+
+## Email-only Match Reports
+
+League sections live inside the email. Never add a public “read your report” link or an online league-report preview. Existing report URLs redirect to subscription signup; the email keeps YouTube as its primary action and profile management in the footer. The website report-generation API requires admin authentication. This does not restrict subscribers' newsletter content or remove fictional design examples.

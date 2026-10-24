@@ -214,10 +214,9 @@ def assemble(brief, exhaust, rows, evidence, youtube, out, tracking=True, instru
                 lines.append(f"Your position: {own['rank']}. GW points: {own['event_total']}. Total: {own['total']}.")
             lines.append(f"GW{evidence['gameweek']} snapshot: {evidence['observed_at']} ({'final' if evidence['final'] else 'provisional'}).")
             lines.extend(f["text"] for f in facts if f["scope"] == "league" and f["league_id"] == league_id)
-            lines.append(f"League report: {APP}/report/{league_id}")
             league_sections.append({"name": public_text(league["name"]), "own": own,
                                     "notes": [f["text"] for f in facts if f["scope"] == "league" and f["league_id"] == league_id],
-                                    "url": f"{APP}/report/{league_id}"})
+                                    })
         if manager.get("squad_notes"):
             lines.extend(["", "Your last published squad — FPL notes as of " + evidence["observed_at"] + ":", *map(public_text, manager["squad_notes"])])
         unsub = APP + "/api/unsubscribe?" + urlencode({"token": row["manage_token"]})

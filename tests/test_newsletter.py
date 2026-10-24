@@ -36,6 +36,8 @@ def prepare(tmp_path, inputs):
 def test_one_combined_email_and_own_row_beyond_top_twenty(tmp_path, inputs):
     plan = read_json(prepare(tmp_path, inputs))
     assert len(plan["messages"]) == 1
+    assert "/report/" not in plan["messages"][0]["text"]
+    assert "/report/" not in plan["messages"][0]["html"]
     text = plan["messages"][0]["text"]
     assert "League 10" in text and "League 20" in text and "position: 25" in text
     assert "provisional" in text and "closertoyes" in text and "Unsubscribe:" in text
