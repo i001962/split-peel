@@ -41,7 +41,7 @@ def render_email(*, title, hook, watch, unsubscribe, facts=(), leagues=(), squad
         sections += f'''<div style="border-top:2px solid {NAVY};margin-top:28px;padding-top:22px"><p style="margin:0 0 8px;color:{BERRY};font-size:10px;letter-spacing:2px;font-weight:bold">YOUR LEAGUE</p><h2 style="margin:0 0 10px;color:#10162b;font-size:23px">{esc(league['name'])}</h2>{stats}'''
         sections += ''.join(paragraph(n) for n in league.get('notes', []))
         sections += f'<p style="font-size:11px;line-height:1.6;color:#657087;margin:12px 0">{esc(snapshot_label)}</p>'
-        sections += f'<a href="{safe_url(league["url"])}" style="font-size:14px;font-weight:bold;color:{BERRY};text-decoration:underline">Read your league report →</a></div>'
+        sections += '</div>'
     if squad_notes:
         sections += '<div style="margin-top:28px;padding:20px;background:#f5f5f8;border-left:4px solid #bd195d"><h2 style="font-size:18px;margin:0 0 12px;color:#10162b">On your squad radar</h2>'
         sections += ''.join(paragraph(note) for note in squad_notes)
@@ -75,12 +75,12 @@ def examples():
     return {
         '01-farcaster': dict(common, title='The armband has entered the chat.', hook='One captain. Two very different weekends. Split has the numbers; Peel has already blamed the weather.',
              facts=['The new episode follows the decisions that turn a sensible team into a very loud group chat.'],
-             leagues=[dict(name='Farcaster Fantasy League', own=dict(rank=7,event_total=68,total=512), notes=['Your fictional team climbed three places. The gap to sixth is now four points. Enough to keep checking.'], url='https://final-whistle.app/report/143466')],
+             leagues=[dict(name='Farcaster Fantasy League', own=dict(rank=7,event_total=68,total=512), notes=['Your fictional team climbed three places. The gap to sixth is now four points. Enough to keep checking.'])],
              squad_notes=['Sample player A — a fitness update worth checking before the deadline. This note demonstrates placement, not real player news.']),
         '02-multiple-leagues': dict(common, title='Two leagues. One very smug manager.', hook='A good gameweek travels well. Here is how the same fictional team looks in two different tables.',
              facts=['Watch the desk argue through the fine line between a brave captaincy call and a lucky escape.'],
-             leagues=[dict(name='Farcaster Fantasy League', own=dict(rank=3,event_total=81,total=548),notes=['Up two places. The fictional leader is nine points away.'],url='https://final-whistle.app/report/143466'),
-                      dict(name='Sunday League Office XI — example', own=dict(rank=1,event_total=81,total=548),notes=['Top of the fictional office table. Monday morning has become a presentation opportunity.'],url='https://final-whistle.app/')]),
+             leagues=[dict(name='Farcaster Fantasy League', own=dict(rank=3,event_total=81,total=548),notes=['Up two places. The fictional leader is nine points away.']),
+                      dict(name='Sunday League Office XI — example', own=dict(rank=1,event_total=81,total=548),notes=['Top of the fictional office table. Monday morning has become a presentation opportunity.'])]),
         '03-show-only': dict(common, title='Football first. The desk is open.', hook='A fresh Final Whistle episode, one very specific football argument, and Peel finding a way to make it personal.',
              facts=['The show’s strongest take, a useful football story, and room for a proper argument.', 'Your Match Report works without an FPL team. Follow the show, enjoy the football, and link a team later if you fancy the league sections.'])
     }
